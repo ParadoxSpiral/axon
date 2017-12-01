@@ -1,0 +1,20 @@
+[package]
+name = "axon"
+version = "0.1.0"
+authors = ["Jonathan Schleußer <paradoxspiral@riseup.net>"]
+
+[dependencies]
+crossbeam = "0.3"
+itertools = "0.7"
+libc = "0.2"
+parking_lot = "0.5"
+reqwest = "0.8"
+synapse-rpc = "0.1"
+serde = "1"
+serde_json = "1"
+serde_derive = "1"
+termion = "1"
+websocket = "0.20"
+unicode-segmentation = "1"
+unicode-width = "0.1"
+url = "1"
