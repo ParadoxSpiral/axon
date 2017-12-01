@@ -338,7 +338,10 @@ impl Renderable for TorrentDetailsPanel {
 
 impl HandleInput for TorrentDetailsPanel {
     fn input(&mut self, ctx: &RpcContext, k: Key) -> InputResult {
-        InputResult::Key(k)
+        match k {
+            Key::Char('q') => InputResult::Close,
+            _ => InputResult::Key(k),
+        }
     }
 }
 
