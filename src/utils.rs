@@ -83,20 +83,15 @@ pub fn count_without_styling(l: &str) -> usize {
     let mut count = 0;
     let mut gs = l.graphemes(true).map(|g| (g, g.width()));
 
-    loop {
-        let g = gs.next();
-        if let Some((g, w)) = g {
-            // FIXME: This is only valid as long as termion doesn't use terminfo,
-            // see: https://github.com/ticki/termion/issues/106
-            if g == "\x1B" {
-                // Skip to end of control sequence
-                gs.position(|g| g.0 == "m").unwrap();
-                continue;
-            } else {
-                count += w;
-            }
+    while let Some((g, w)) = gs.next() {
+        // FIXME: This is only valid as long as termion doesn't use terminfo,
+        // see: https://github.com/ticki/termion/issues/106
+        if g == "\x1B" {
+            // Skip to end of control sequence
+            gs.position(|g| g.0 == "m").unwrap();
+            continue;
         } else {
-            break;
+            count += w;
         }
     }
 
