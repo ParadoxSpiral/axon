@@ -69,7 +69,7 @@ where
     R: Component,
 {
     fn name(&self) -> String {
-        format!("vsplit: ({}, {})", self.left.name(), self.right.name())
+        format!("({} ╍ {})", self.left.name(), self.right.name())
     }
     fn render(&mut self, target: &mut Vec<u8>, width: u16, height: u16, x_off: u16, y_off: u16) {
         // Draw left
@@ -181,7 +181,7 @@ where
     B: Component,
 {
     fn name(&self) -> String {
-        format!("hsplit: ({}, {})", self.top.name(), self.bot.name())
+        format!("({} ╏ {})", self.top.name(), self.bot.name())
     }
     fn render(&mut self, target: &mut Vec<u8>, width: u16, height: u16, x_off: u16, y_off: u16) {
         // Draw top
