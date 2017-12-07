@@ -45,12 +45,11 @@ pub enum InputResult {
     Close,
     Rerender,
     ReplaceWith(Box<Component>),
-    // FIXME: Special case for overlay, that introduces code duplication
-    ReplaceWithNoDrop(Box<Component>),
     // A key was not used by any component below the current one
     Key(Key),
 }
 
+#[derive(Clone)]
 pub struct LoginPanel {
     server: widgets::Input,
     pass: widgets::PasswordInput,
@@ -167,13 +166,11 @@ impl HandleInput for LoginPanel {
                     widgets::CloseOnInput::new(widgets::IgnoreRpc::new(
                         widgets::OwnedText::<align::Center>::new(err),
                     )),
-                    Box::new(widgets::IgnoreRpcPassInput::new(*unsafe {
-                        Box::from_raw(self as *const _ as *mut LoginPanel)
-                    })),
+                    Box::new(widgets::IgnoreRpcPassInput::new(self.clone())),
                     (len as u16 + 2, 1),
                     color::Red,
                 ));
-                InputResult::ReplaceWithNoDrop(overlay as Box<Component>)
+                InputResult::ReplaceWith(overlay as Box<Component>)
             } else {
                 let panel = Box::new(widgets::Tabs::new(
                     vec![

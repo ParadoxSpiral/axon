@@ -22,7 +22,7 @@ use termion::event::Key;
 
 use std::cell::RefCell;
 use std::io::{Stdout, StdoutLock, Write};
-use std::mem::{self, ManuallyDrop};
+use std::mem;
 
 use rpc::RpcContext;
 use self::tui::{widgets, InputResult, Renderable};
@@ -106,10 +106,6 @@ impl<'a> View<'a> {
                 match ret {
                     InputResult::ReplaceWith(comp) => {
                         let _ = mem::replace(&mut *cnt, comp);
-                        InputResult::Rerender
-                    }
-                    InputResult::ReplaceWithNoDrop(comp) => {
-                        ManuallyDrop::new(mem::replace(&mut *cnt, comp));
                         InputResult::Rerender
                     }
                     _ => ret,

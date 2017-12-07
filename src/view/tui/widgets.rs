@@ -135,14 +135,6 @@ impl HandleInput for VSplit {
 
                 InputResult::Rerender
             }
-            InputResult::ReplaceWithNoDrop(cmp) => {
-                if self.left_active {
-                    ManuallyDrop::new(mem::replace(&mut *self.left, cmp));
-                } else {
-                    ManuallyDrop::new(mem::replace(&mut *self.right, cmp));
-                }
-                InputResult::Rerender
-            }
             InputResult::Close => if self.left_active {
                 InputResult::ReplaceWith(unsafe {
                     Box::from_raw((&**self.right) as *const Component as *mut Component)
@@ -260,14 +252,6 @@ impl HandleInput for HSplit {
                     let _ = mem::replace(&mut *self.top, cmp);
                 } else {
                     let _ = mem::replace(&mut *self.bot, cmp);
-                }
-                InputResult::Rerender
-            }
-            InputResult::ReplaceWithNoDrop(cmp) => {
-                if self.top_active {
-                    ManuallyDrop::new(mem::replace(&mut *self.top, cmp));
-                } else {
-                    ManuallyDrop::new(mem::replace(&mut *self.bot, cmp));
                 }
                 InputResult::Rerender
             }
@@ -412,13 +396,6 @@ impl HandleInput for Tabs {
             },
             InputResult::ReplaceWith(cmp) => {
                 let _ = mem::replace(&mut *self.tabs.get_mut(self.active_idx).unwrap(), cmp);
-                InputResult::Rerender
-            }
-            InputResult::ReplaceWithNoDrop(cmp) => {
-                ManuallyDrop::new(mem::replace(
-                    &mut *self.tabs.get_mut(self.active_idx).unwrap(),
-                    cmp,
-                ));
                 InputResult::Rerender
             }
             ret => ret,
@@ -688,6 +665,7 @@ where
     }
 }
 
+#[derive(Clone)]
 pub struct Input {
     content: String,
     pos: usize,
@@ -778,6 +756,7 @@ impl Input {
     }
 }
 
+#[derive(Clone)]
 pub struct PasswordInput(Input);
 impl PasswordInput {
     pub fn with_capacity(n: usize) -> PasswordInput {
