@@ -11,7 +11,6 @@ Note: Currently termion does not respect terminfo and uses e.g. ANSI color codes
 - arrow keys generally switch items
 
 Torrent panel:
-- typing any character will start filtering case insensitively
 - `^i` will filter case insensitively, `^s` sensitively
 - `^d` will open the selected torrents' details
 
