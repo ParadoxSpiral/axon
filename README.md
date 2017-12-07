@@ -12,7 +12,7 @@ Note: Currently termion does not respect terminfo and uses e.g. ANSI color codes
 
 Torrent panel:
 - `^i` will filter case insensitively, `^s` sensitively
-- `^d` will open the selected torrents' details
+- `d` will open the selected torrents' details
 
 Torrent details:
 - `q` will close the current details pane
