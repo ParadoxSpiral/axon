@@ -104,12 +104,12 @@ impl<'a> View<'a> {
                 *self.global_err.borrow_mut() = None;
                 let ret = cnt.input(ctx, k);
                 match ret {
-                    InputResult::ReplaceWith(comp, drop) => {
-                        if drop {
-                            let _ = mem::replace(&mut *cnt, comp);
-                        } else {
-                            ManuallyDrop::new(mem::replace(&mut *cnt, comp));
-                        }
+                    InputResult::ReplaceWith(comp) => {
+                        let _ = mem::replace(&mut *cnt, comp);
+                        InputResult::Rerender
+                    }
+                    InputResult::ReplaceWithNoDrop(comp) => {
+                        ManuallyDrop::new(mem::replace(&mut *cnt, comp));
                         InputResult::Rerender
                     }
                     _ => ret,

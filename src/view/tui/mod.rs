@@ -44,8 +44,9 @@ pub trait HandleRpc {
 pub enum InputResult {
     Close,
     Rerender,
-    // The bool signifies whether the previous component should be dropped
-    ReplaceWith(Box<Component>, bool),
+    ReplaceWith(Box<Component>),
+    // FIXME: Special case for overlay, that introduces code duplication
+    ReplaceWithNoDrop(Box<Component>),
     // A key was not used by any component below the current one
     Key(Key),
 }
@@ -172,7 +173,7 @@ impl HandleInput for LoginPanel {
                     (len as u16 + 2, 1),
                     color::Red,
                 ));
-                InputResult::ReplaceWith(overlay as Box<Component>, false)
+                InputResult::ReplaceWithNoDrop(overlay as Box<Component>)
             } else {
                 let panel = Box::new(widgets::Tabs::new(
                     vec![
@@ -191,7 +192,7 @@ impl HandleInput for LoginPanel {
                     ],
                     0,
                 ));
-                InputResult::ReplaceWith(panel as Box<Component>, true)
+                InputResult::ReplaceWith(panel as Box<Component>)
             },
             Key::Char(c) => {
                 if self.srv_selected {

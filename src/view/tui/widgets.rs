@@ -30,44 +30,48 @@ use utils;
 use utils::align::{Align, Alignment, Left};
 use super::{Component, HandleInput, HandleRpc, InputResult, Renderable};
 
-pub struct VSplit<L, R>
-where
-    L: Component,
-    R: Component,
-{
-    left: L,
-    right: R,
+pub struct VSplit {
+    left: ManuallyDrop<Box<Component>>,
+    right: ManuallyDrop<Box<Component>>,
     left_active: bool,
     left_size_factor: f32,
 }
 
-impl<L, R> VSplit<L, R>
-where
-    L: Component,
-    R: Component,
-{
-    pub fn new(left: L, right: R, left_active: bool, left_size_factor: f32) -> VSplit<L, R> {
+impl VSplit {
+    pub fn new<L: 'static, R: 'static>(
+        left: L,
+        right: R,
+        left_active: bool,
+        left_size_factor: f32,
+    ) -> VSplit
+    where
+        L: Component,
+        R: Component,
+    {
         VSplit {
-            left: left,
-            right: right,
+            left: ManuallyDrop::new(Box::new(left)),
+            right: ManuallyDrop::new(Box::new(right)),
             left_active: left_active,
             left_size_factor: left_size_factor,
         }
     }
 }
 
-impl<L, R> Component for VSplit<L, R>
-where
-    L: Component,
-    R: Component,
-{
+impl Drop for VSplit {
+    fn drop(&mut self) {
+        unsafe {
+            if self.left_active {
+                ManuallyDrop::drop(&mut self.left);
+            } else {
+                ManuallyDrop::drop(&mut self.right);
+            }
+        }
+    }
 }
 
-impl<L, R> Renderable for VSplit<L, R>
-where
-    L: Component,
-    R: Component,
-{
+impl Component for VSplit {}
+
+impl Renderable for VSplit {
     fn name(&self) -> String {
         format!("({} ╍ {})", self.left.name(), self.right.name())
     }
@@ -103,11 +107,7 @@ where
     }
 }
 
-impl<L, R> HandleInput for VSplit<L, R>
-where
-    L: Component,
-    R: Component,
-{
+impl HandleInput for VSplit {
     fn input(&mut self, ctx: &RpcContext, k: Key) -> InputResult {
         match if self.left_active {
             self.left.input(ctx, k)
@@ -126,60 +126,86 @@ where
             } else {
                 InputResult::Key(Key::Char('l'))
             },
+            InputResult::ReplaceWith(cmp) => {
+                if self.left_active {
+                    let _ = mem::replace(&mut *self.left, cmp);
+                } else {
+                    let _ = mem::replace(&mut *self.right, cmp);
+                }
+
+                InputResult::Rerender
+            }
+            InputResult::ReplaceWithNoDrop(cmp) => {
+                if self.left_active {
+                    ManuallyDrop::new(mem::replace(&mut *self.left, cmp));
+                } else {
+                    ManuallyDrop::new(mem::replace(&mut *self.right, cmp));
+                }
+                InputResult::Rerender
+            }
+            InputResult::Close => if self.left_active {
+                InputResult::ReplaceWith(unsafe {
+                    Box::from_raw((&**self.right) as *const Component as *mut Component)
+                })
+            } else {
+                InputResult::ReplaceWith(unsafe {
+                    Box::from_raw((&**self.left) as *const Component as *mut Component)
+                })
+            },
             ret => ret,
         }
     }
 }
 
-impl<L, R> HandleRpc for VSplit<L, R>
-where
-    L: Component,
-    R: Component,
-{
+impl HandleRpc for VSplit {
     fn rpc(&mut self, ctx: &RpcContext, msg: &SMessage) {
         self.left.rpc(ctx, msg);
         self.right.rpc(ctx, msg);
     }
 }
 
-pub struct HSplit<T, B>
-where
-    T: Component,
-    B: Component,
-{
-    top: T,
-    bot: B,
+pub struct HSplit {
+    top: ManuallyDrop<Box<Component>>,
+    bot: ManuallyDrop<Box<Component>>,
     top_active: bool,
     top_size_factor: f32,
 }
 
-impl<T, B> HSplit<T, B>
-where
-    T: Component,
-    B: Component,
-{
-    pub fn new(top: T, bot: B, top_active: bool, top_size_factor: f32) -> HSplit<T, B> {
+impl Drop for HSplit {
+    fn drop(&mut self) {
+        unsafe {
+            if self.top_active {
+                ManuallyDrop::drop(&mut self.top);
+            } else {
+                ManuallyDrop::drop(&mut self.bot);
+            }
+        }
+    }
+}
+
+impl HSplit {
+    pub fn new<T: 'static, B: 'static>(
+        top: T,
+        bot: B,
+        top_active: bool,
+        top_size_factor: f32,
+    ) -> HSplit
+    where
+        T: Component,
+        B: Component,
+    {
         HSplit {
-            top: top,
-            bot: bot,
+            top: ManuallyDrop::new(Box::new(top)),
+            bot: ManuallyDrop::new(Box::new(bot)),
             top_active: top_active,
             top_size_factor: top_size_factor,
         }
     }
 }
 
-impl<T, B> Component for HSplit<T, B>
-where
-    T: Component,
-    B: Component,
-{
-}
+impl Component for HSplit {}
 
-impl<T, B> Renderable for HSplit<T, B>
-where
-    T: Component,
-    B: Component,
-{
+impl Renderable for HSplit {
     fn name(&self) -> String {
         format!("({} ╏ {})", self.top.name(), self.bot.name())
     }
@@ -210,11 +236,7 @@ where
     }
 }
 
-impl<T, B> HandleInput for HSplit<T, B>
-where
-    T: Component,
-    B: Component,
-{
+impl HandleInput for HSplit {
     fn input(&mut self, ctx: &RpcContext, k: Key) -> InputResult {
         match if self.top_active {
             self.top.input(ctx, k)
@@ -233,16 +255,37 @@ where
             } else {
                 InputResult::Key(Key::Char('j'))
             },
+            InputResult::ReplaceWith(cmp) => {
+                if self.top_active {
+                    let _ = mem::replace(&mut *self.top, cmp);
+                } else {
+                    let _ = mem::replace(&mut *self.bot, cmp);
+                }
+                InputResult::Rerender
+            }
+            InputResult::ReplaceWithNoDrop(cmp) => {
+                if self.top_active {
+                    ManuallyDrop::new(mem::replace(&mut *self.top, cmp));
+                } else {
+                    ManuallyDrop::new(mem::replace(&mut *self.bot, cmp));
+                }
+                InputResult::Rerender
+            }
+            InputResult::Close => if self.top_active {
+                InputResult::ReplaceWith(unsafe {
+                    Box::from_raw((&**self.bot) as *const Component as *mut Component)
+                })
+            } else {
+                InputResult::ReplaceWith(unsafe {
+                    Box::from_raw((&**self.top) as *const Component as *mut Component)
+                })
+            },
             ret => ret,
         }
     }
 }
 
-impl<T, B> HandleRpc for HSplit<T, B>
-where
-    T: Component,
-    B: Component,
-{
+impl HandleRpc for HSplit {
     fn rpc(&mut self, ctx: &RpcContext, msg: &SMessage) {
         self.top.rpc(ctx, msg);
         self.bot.rpc(ctx, msg);
@@ -355,14 +398,11 @@ impl HandleInput for Tabs {
                 InputResult::Key(Key::Char('h'))
             },
             InputResult::Close => if len == 2 {
-                InputResult::ReplaceWith(
-                    if self.active_idx == 0 {
-                        self.tabs.remove(1)
-                    } else {
-                        self.tabs.remove(0)
-                    },
-                    true,
-                )
+                InputResult::ReplaceWith(if self.active_idx == 0 {
+                    self.tabs.remove(1)
+                } else {
+                    self.tabs.remove(0)
+                })
             } else {
                 if self.active_idx == len - 1 {
                     self.active_idx -= 1;
@@ -370,15 +410,15 @@ impl HandleInput for Tabs {
                 self.tabs.remove(self.active_idx);
                 InputResult::Rerender
             },
-            InputResult::ReplaceWith(cmp, drop) => {
-                if drop {
-                    let _ = mem::replace(&mut *self.tabs.get_mut(self.active_idx).unwrap(), cmp);
-                } else {
-                    ManuallyDrop::new(mem::replace(
-                        &mut *self.tabs.get_mut(self.active_idx).unwrap(),
-                        cmp,
-                    ));
-                }
+            InputResult::ReplaceWith(cmp) => {
+                let _ = mem::replace(&mut *self.tabs.get_mut(self.active_idx).unwrap(), cmp);
+                InputResult::Rerender
+            }
+            InputResult::ReplaceWithNoDrop(cmp) => {
+                ManuallyDrop::new(mem::replace(
+                    &mut *self.tabs.get_mut(self.active_idx).unwrap(),
+                    cmp,
+                ));
                 InputResult::Rerender
             }
             ret => ret,
@@ -512,10 +552,9 @@ where
     fn input(&mut self, ctx: &RpcContext, k: Key) -> InputResult {
         let ret = self.top.input(ctx, k);
         match ret {
-            InputResult::Close => {
-                let ptr = (&mut **self.below) as *mut Component;
-                InputResult::ReplaceWith(unsafe { Box::from_raw(ptr) }, true)
-            }
+            InputResult::Close => InputResult::ReplaceWith(unsafe {
+                Box::from_raw((&mut **self.below) as *mut Component)
+            }),
             _ => ret,
         }
     }
