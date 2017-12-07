@@ -26,6 +26,7 @@ use std::mem;
 
 use rpc::RpcContext;
 use self::tui::{widgets, InputResult, Renderable};
+use utils::align;
 
 pub struct View<'a> {
     content: Mutex<Box<tui::Component>>,
@@ -71,7 +72,7 @@ impl<'a> View<'a> {
             if let Some(ref err) = *self.global_err.borrow() {
                 let mut ov = widgets::Overlay::new(
                     widgets::CloseOnInput::new(widgets::IgnoreRpc::new(
-                        widgets::BorrowedText::<::utils::align::Center>::new(err),
+                        widgets::BorrowedText::<align::x::Center, align::y::Top>::new(err),
                     )),
                     unsafe {
                         Box::from_raw((&mut **cnt) as *const tui::Component as *mut tui::Component)

@@ -27,51 +27,45 @@ use std::str;
 
 use rpc::RpcContext;
 use utils;
-use utils::align::{Align, Alignment, Left};
+use utils::align::{self, x, y};
 use super::{Component, HandleInput, HandleRpc, InputResult, Renderable};
 
-pub struct VSplit {
-    left: ManuallyDrop<Box<Component>>,
-    right: ManuallyDrop<Box<Component>>,
+pub struct BorrowedVSplit<'a, L: 'a, R: 'a>
+where
+    L: Renderable,
+    R: Renderable,
+{
+    left: &'a mut L,
+    right: &'a mut R,
     left_active: bool,
     left_size_factor: f32,
 }
 
-impl VSplit {
-    pub fn new<L: 'static, R: 'static>(
-        left: L,
-        right: R,
+impl<'a, L, R> BorrowedVSplit<'a, L, R>
+where
+    L: Renderable,
+    R: Renderable,
+{
+    pub fn new(
+        left: &'a mut L,
+        right: &'a mut R,
         left_active: bool,
         left_size_factor: f32,
-    ) -> VSplit
-    where
-        L: Component,
-        R: Component,
-    {
-        VSplit {
-            left: ManuallyDrop::new(Box::new(left)),
-            right: ManuallyDrop::new(Box::new(right)),
+    ) -> BorrowedVSplit<'a, L, R> {
+        BorrowedVSplit {
+            left: left,
+            right: right,
             left_active: left_active,
             left_size_factor: left_size_factor,
         }
     }
 }
 
-impl Drop for VSplit {
-    fn drop(&mut self) {
-        unsafe {
-            if self.left_active {
-                ManuallyDrop::drop(&mut self.left);
-            } else {
-                ManuallyDrop::drop(&mut self.right);
-            }
-        }
-    }
-}
-
-impl Component for VSplit {}
-
-impl Renderable for VSplit {
+impl<'a, L, R> Renderable for BorrowedVSplit<'a, L, R>
+where
+    L: Renderable,
+    R: Renderable,
+{
     fn name(&self) -> String {
         format!("({} ╍ {})", self.left.name(), self.right.name())
     }
@@ -107,97 +101,42 @@ impl Renderable for VSplit {
     }
 }
 
-impl HandleInput for VSplit {
-    fn input(&mut self, ctx: &RpcContext, k: Key) -> InputResult {
-        match if self.left_active {
-            self.left.input(ctx, k)
-        } else {
-            self.right.input(ctx, k)
-        } {
-            InputResult::Key(Key::Char('h')) => if self.left_active {
-                InputResult::Key(Key::Char('h'))
-            } else {
-                self.left_active = true;
-                InputResult::Rerender
-            },
-            InputResult::Key(Key::Char('l')) => if self.left_active {
-                self.left_active = false;
-                InputResult::Rerender
-            } else {
-                InputResult::Key(Key::Char('l'))
-            },
-            InputResult::ReplaceWith(cmp) => {
-                if self.left_active {
-                    let _ = mem::replace(&mut *self.left, cmp);
-                } else {
-                    let _ = mem::replace(&mut *self.right, cmp);
-                }
-
-                InputResult::Rerender
-            }
-            InputResult::Close => if self.left_active {
-                InputResult::ReplaceWith(unsafe {
-                    Box::from_raw((&**self.right) as *const Component as *mut Component)
-                })
-            } else {
-                InputResult::ReplaceWith(unsafe {
-                    Box::from_raw((&**self.left) as *const Component as *mut Component)
-                })
-            },
-            ret => ret,
-        }
-    }
-}
-
-impl HandleRpc for VSplit {
-    fn rpc(&mut self, ctx: &RpcContext, msg: &SMessage) {
-        self.left.rpc(ctx, msg);
-        self.right.rpc(ctx, msg);
-    }
-}
-
-pub struct HSplit {
-    top: ManuallyDrop<Box<Component>>,
-    bot: ManuallyDrop<Box<Component>>,
+pub struct BorrowedHSplit<'a, T: 'a, B: 'a>
+where
+    T: Renderable,
+    B: Renderable,
+{
+    top: &'a mut T,
+    bot: &'a mut B,
     top_active: bool,
     top_size_factor: f32,
 }
 
-impl Drop for HSplit {
-    fn drop(&mut self) {
-        unsafe {
-            if self.top_active {
-                ManuallyDrop::drop(&mut self.top);
-            } else {
-                ManuallyDrop::drop(&mut self.bot);
-            }
-        }
-    }
-}
-
-impl HSplit {
-    pub fn new<T: 'static, B: 'static>(
-        top: T,
-        bot: B,
+impl<'a, T: 'a, B: 'a> BorrowedHSplit<'a, T, B>
+where
+    T: Renderable,
+    B: Renderable,
+{
+    pub fn new(
+        top: &'a mut T,
+        bot: &'a mut B,
         top_active: bool,
         top_size_factor: f32,
-    ) -> HSplit
-    where
-        T: Component,
-        B: Component,
-    {
-        HSplit {
-            top: ManuallyDrop::new(Box::new(top)),
-            bot: ManuallyDrop::new(Box::new(bot)),
+    ) -> BorrowedHSplit<'a, T, B> {
+        BorrowedHSplit {
+            top: top,
+            bot: bot,
             top_active: top_active,
             top_size_factor: top_size_factor,
         }
     }
 }
 
-impl Component for HSplit {}
-
-impl Renderable for HSplit {
+impl<'a, T: 'a, B: 'a> Renderable for BorrowedHSplit<'a, T, B>
+where
+    T: Renderable,
+    B: Renderable,
+{
     fn name(&self) -> String {
         format!("({} ╏ {})", self.top.name(), self.bot.name())
     }
@@ -225,54 +164,6 @@ impl Renderable for HSplit {
         // Draw bot
         self.bot
             .render(target, width, height - top_h - 1, x_off, y_off + top_h + 2);
-    }
-}
-
-impl HandleInput for HSplit {
-    fn input(&mut self, ctx: &RpcContext, k: Key) -> InputResult {
-        match if self.top_active {
-            self.top.input(ctx, k)
-        } else {
-            self.bot.input(ctx, k)
-        } {
-            InputResult::Key(Key::Char('k')) => if self.top_active {
-                InputResult::Key(Key::Char('k'))
-            } else {
-                self.top_active = true;
-                InputResult::Rerender
-            },
-            InputResult::Key(Key::Char('j')) => if self.top_active {
-                self.top_active = false;
-                InputResult::Rerender
-            } else {
-                InputResult::Key(Key::Char('j'))
-            },
-            InputResult::ReplaceWith(cmp) => {
-                if self.top_active {
-                    let _ = mem::replace(&mut *self.top, cmp);
-                } else {
-                    let _ = mem::replace(&mut *self.bot, cmp);
-                }
-                InputResult::Rerender
-            }
-            InputResult::Close => if self.top_active {
-                InputResult::ReplaceWith(unsafe {
-                    Box::from_raw((&**self.bot) as *const Component as *mut Component)
-                })
-            } else {
-                InputResult::ReplaceWith(unsafe {
-                    Box::from_raw((&**self.top) as *const Component as *mut Component)
-                })
-            },
-            ret => ret,
-        }
-    }
-}
-
-impl HandleRpc for HSplit {
-    fn rpc(&mut self, ctx: &RpcContext, msg: &SMessage) {
-        self.top.rpc(ctx, msg);
-        self.bot.rpc(ctx, msg);
     }
 }
 
@@ -336,7 +227,7 @@ impl Renderable for Tabs {
             if self.active_idx == i {
                 write!(target, "{}", color::Fg(color::Cyan)).unwrap();
             }
-            BorrowedText::<Left>::new(&name).render(
+            BorrowedText::<align::x::Left, align::y::Top>::new(&name).render(
                 target,
                 width / len - sep_l,
                 1,
@@ -548,48 +439,48 @@ where
     }
 }
 
-pub struct List<T>
+pub struct BorrowedText<'a, AX, AY>
 where
-    T: ::std::fmt::Display,
-{
-    list: Vec<T>,
-}
-
-pub struct BorrowedText<'a, A>
-where
-    A: Align,
+    AX: x::Align,
+    AY: y::Align,
 {
     content: &'a str,
-    _align: PhantomData<A>,
+    _align_x: PhantomData<AX>,
+    _align_y: PhantomData<AY>,
 }
 
-impl<'a, A> BorrowedText<'a, A>
+impl<'a, AX, AY> BorrowedText<'a, AX, AY>
 where
-    A: Align,
+    AX: x::Align,
+    AY: y::Align,
 {
-    pub fn new(t: &str) -> BorrowedText<A> {
+    pub fn new(t: &str) -> BorrowedText<AX, AY> {
         BorrowedText {
             content: t,
-            _align: PhantomData,
+            _align_x: PhantomData,
+            _align_y: PhantomData,
         }
     }
 }
 
-impl<'a, A> Renderable for BorrowedText<'a, A>
+impl<'a, AX, AY> Renderable for BorrowedText<'a, AX, AY>
 where
-    A: Align,
+    AX: x::Align,
+    AY: y::Align,
 {
     fn name(&self) -> String {
         "txt".into()
     }
     fn render(&mut self, target: &mut Vec<u8>, width: u16, height: u16, x_off: u16, y_off: u16) {
-        let x_off = x_off + match A::align_offset(&[self.content], width) {
-            Alignment::Single(x) => x,
-            Alignment::Each(v) => {
-                debug_assert_eq!(1, v.len());
+        let x_off = x_off + match AX::align_offset(&[self.content], width) {
+            x::Alignment::Single(x) => x,
+            x::Alignment::Each(v) => {
+                // TODO: unimpl for n > 1
+                assert_eq!(1, v.len());
                 *v.first().unwrap()
             }
         };
+        let y_off = y_off + AY::align_offset(&[self.content], height);
         let len = utils::count_without_styling(self.content);
 
         if width >= len as u16 {
@@ -633,35 +524,40 @@ where
     }
 }
 
-pub struct OwnedText<A>
+pub struct OwnedText<AX, AY>
 where
-    A: Align,
+    AX: x::Align,
+    AY: y::Align,
 {
     content: String,
-    _align: PhantomData<A>,
+    _align_x: PhantomData<AX>,
+    _align_y: PhantomData<AY>,
 }
 
-impl<A> OwnedText<A>
+impl<AX, AY> OwnedText<AX, AY>
 where
-    A: Align,
+    AX: x::Align,
+    AY: y::Align,
 {
-    pub fn new(t: String) -> OwnedText<A> {
+    pub fn new(t: String) -> OwnedText<AX, AY> {
         OwnedText {
             content: t,
-            _align: PhantomData,
+            _align_x: PhantomData,
+            _align_y: PhantomData,
         }
     }
 }
 
-impl<A> Renderable for OwnedText<A>
+impl<AX, AY> Renderable for OwnedText<AX, AY>
 where
-    A: Align,
+    AX: x::Align,
+    AY: y::Align,
 {
     fn name(&self) -> String {
         "txt".into()
     }
     fn render(&mut self, target: &mut Vec<u8>, width: u16, height: u16, x_off: u16, y_off: u16) {
-        BorrowedText::<A>::new(&self.content).render(target, width, height, x_off, y_off);
+        BorrowedText::<AX, AY>::new(&self.content).render(target, width, height, x_off, y_off);
     }
 }
 

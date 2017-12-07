@@ -16,6 +16,7 @@
 pub mod widgets;
 
 use synapse_rpc::message::SMessage;
+use synapse_rpc::resource::{Torrent, Tracker};
 use termion::{color, cursor};
 use termion::event::Key;
 use url::Url;
@@ -23,7 +24,8 @@ use url::Url;
 use std::io::Write;
 
 use rpc::RpcContext;
-use utils::align::{self, Align, Alignment};
+use utils::align;
+use utils::align::x::Align;
 
 // Unfortunately we cannot compose this inside View, so we need a composed trait
 pub trait Component: Renderable + HandleInput + HandleRpc {}
@@ -100,14 +102,14 @@ impl Renderable for LoginPanel {
             target,
             "{}",
             cursor::Goto(
-                match align::CenterLongestLeft::align_offset(lines, width) {
-                    Alignment::Single(x) => x,
+                match align::x::CenterLongestLeft::align_offset(lines, width) {
+                    align::x::Alignment::Single(x) => x,
                     _ => unreachable!(),
                 },
                 height / 3
             )
         ).unwrap();
-        align::Left::align(target, lines);
+        align::x::Left::align(target, lines);
     }
 
     fn name(&self) -> String {
@@ -164,7 +166,7 @@ impl HandleInput for LoginPanel {
                 let len = err.len();
                 let overlay = Box::new(widgets::Overlay::new(
                     widgets::CloseOnInput::new(widgets::IgnoreRpc::new(
-                        widgets::OwnedText::<align::Center>::new(err),
+                        widgets::OwnedText::<align::x::Center, align::y::Top>::new(err),
                     )),
                     Box::new(widgets::IgnoreRpcPassInput::new(self.clone())),
                     (len as u16 + 2, 1),
@@ -174,17 +176,7 @@ impl HandleInput for LoginPanel {
             } else {
                 let panel = Box::new(widgets::Tabs::new(
                     vec![
-                        Box::new(widgets::VSplit::new(
-                            TrackerPanel::new(),
-                            widgets::HSplit::new(
-                                TorrentPanel::new(),
-                                TorrentDetailsPanel::new(),
-                                true,
-                                0.65,
-                            ),
-                            false,
-                            0.2,
-                        )),
+                        Box::new(TorrentPanel::new()),
                         Box::new(StatisticsPanel::new()),
                     ],
                     0,
@@ -204,46 +196,21 @@ impl HandleInput for LoginPanel {
     }
 }
 
-pub struct TrackerPanel {}
-
-impl TrackerPanel {
-    pub fn new() -> TrackerPanel {
-        TrackerPanel {}
-    }
+struct TorrentPanel {
+    torrents: Vec<Torrent>,
+    trackers: Vec<Tracker>,
+    trackers_displayed: bool,
+    details: Vec<TorrentDetailsPanel>,
 }
-
-impl Component for TrackerPanel {}
-
-impl Renderable for TrackerPanel {
-    fn name(&self) -> String {
-        "trackers".into()
-    }
-    fn render(&mut self, target: &mut Vec<u8>, width: u16, height: u16, x_off: u16, y_off: u16) {
-        widgets::BorrowedText::<align::Center>::new("tracker panel").render(
-            target,
-            width,
-            height,
-            x_off,
-            y_off + height / 2,
-        );
-    }
-}
-
-impl HandleInput for TrackerPanel {
-    fn input(&mut self, ctx: &RpcContext, k: Key) -> InputResult {
-        InputResult::Key(k)
-    }
-}
-
-impl HandleRpc for TrackerPanel {
-    fn rpc(&mut self, ctx: &RpcContext, msg: &SMessage) {}
-}
-
-pub struct TorrentPanel {}
 
 impl TorrentPanel {
-    pub fn new() -> TorrentPanel {
-        TorrentPanel {}
+    fn new() -> TorrentPanel {
+        TorrentPanel {
+            torrents: Vec::new(),
+            trackers: Vec::new(),
+            trackers_displayed: false,
+            details: Vec::new(),
+        }
     }
 }
 
@@ -254,13 +221,55 @@ impl Renderable for TorrentPanel {
         "torrents".into()
     }
     fn render(&mut self, target: &mut Vec<u8>, width: u16, height: u16, x_off: u16, y_off: u16) {
-        widgets::BorrowedText::<align::Center>::new("torrent panel").render(
-            target,
-            width,
-            height,
-            x_off,
-            y_off + height / 2,
-        );
+        match (self.trackers_displayed, self.details.is_empty()) {
+            (false, true) => {
+                widgets::BorrowedText::<align::x::Center, align::y::Center>::new("torrents")
+                    .render(target, width, height, x_off, y_off);
+            }
+            (true, true) => {
+                widgets::BorrowedVSplit::new(
+                    &mut widgets::BorrowedText::<align::x::Center, align::y::Center>::new(
+                        "trackers",
+                    ),
+                    &mut widgets::BorrowedText::<align::x::Center, align::y::Center>::new(
+                        "torrents",
+                    ),
+                    true,
+                    0.2,
+                ).render(target, width, height, x_off, y_off);
+            }
+            (false, false) => {
+                widgets::BorrowedHSplit::new(
+                    &mut widgets::BorrowedText::<align::x::Center, align::y::Center>::new(
+                        "torrents",
+                    ),
+                    &mut widgets::BorrowedText::<align::x::Center, align::y::Center>::new(
+                        "torrent details",
+                    ),
+                    true,
+                    0.65,
+                ).render(target, width, height, x_off, y_off);
+            }
+            (true, false) => {
+                widgets::BorrowedVSplit::new(
+                    &mut widgets::BorrowedText::<align::x::Center, align::y::Center>::new(
+                        "trackers",
+                    ),
+                    &mut widgets::BorrowedHSplit::new(
+                        &mut widgets::BorrowedText::<align::x::Center, align::y::Center>::new(
+                            "torrents",
+                        ),
+                        &mut widgets::BorrowedText::<align::x::Center, align::y::Center>::new(
+                            "torrent details",
+                        ),
+                        true,
+                        0.65,
+                    ),
+                    true,
+                    0.5,
+                ).render(target, width, height, x_off, y_off);
+            }
+        }
     }
 }
 
@@ -271,42 +280,11 @@ impl HandleInput for TorrentPanel {
 }
 
 impl HandleRpc for TorrentPanel {
-    fn rpc(&mut self, ctx: &RpcContext, msg: &SMessage) {}
-}
-
-pub struct StatisticsPanel {}
-
-impl StatisticsPanel {
-    pub fn new() -> StatisticsPanel {
-        StatisticsPanel {}
+    fn rpc(&mut self, ctx: &RpcContext, msg: &SMessage) {
+        for d in &mut self.details {
+            d.rpc(ctx, msg);
+        }
     }
-}
-
-impl Component for StatisticsPanel {}
-
-impl Renderable for StatisticsPanel {
-    fn name(&self) -> String {
-        "statistics".into()
-    }
-    fn render(&mut self, target: &mut Vec<u8>, width: u16, height: u16, x_off: u16, y_off: u16) {
-        widgets::BorrowedText::<align::Center>::new("statistics panel").render(
-            target,
-            width,
-            height,
-            x_off,
-            y_off + height / 2,
-        );
-    }
-}
-
-impl HandleInput for StatisticsPanel {
-    fn input(&mut self, ctx: &RpcContext, k: Key) -> InputResult {
-        InputResult::Key(k)
-    }
-}
-
-impl HandleRpc for StatisticsPanel {
-    fn rpc(&mut self, ctx: &RpcContext, msg: &SMessage) {}
 }
 
 pub struct TorrentDetailsPanel {}
@@ -324,13 +302,8 @@ impl Renderable for TorrentDetailsPanel {
         "torrent details".into()
     }
     fn render(&mut self, target: &mut Vec<u8>, width: u16, height: u16, x_off: u16, y_off: u16) {
-        widgets::BorrowedText::<align::Center>::new("torrent details panel").render(
-            target,
-            width,
-            height,
-            x_off,
-            y_off + height / 2,
-        );
+        widgets::BorrowedText::<align::x::Center, align::y::Center>::new("torrent details panel")
+            .render(target, width, height, x_off, y_off + height / 2);
     }
 }
 
@@ -344,5 +317,35 @@ impl HandleInput for TorrentDetailsPanel {
 }
 
 impl HandleRpc for TorrentDetailsPanel {
+    fn rpc(&mut self, ctx: &RpcContext, msg: &SMessage) {}
+}
+
+pub struct StatisticsPanel {}
+
+impl StatisticsPanel {
+    fn new() -> StatisticsPanel {
+        StatisticsPanel {}
+    }
+}
+
+impl Component for StatisticsPanel {}
+
+impl Renderable for StatisticsPanel {
+    fn name(&self) -> String {
+        "statistics".into()
+    }
+    fn render(&mut self, target: &mut Vec<u8>, width: u16, height: u16, x_off: u16, y_off: u16) {
+        widgets::BorrowedText::<align::x::Center, align::y::Center>::new("statistics panel")
+            .render(target, width, height, x_off, y_off);
+    }
+}
+
+impl HandleInput for StatisticsPanel {
+    fn input(&mut self, ctx: &RpcContext, k: Key) -> InputResult {
+        InputResult::Key(k)
+    }
+}
+
+impl HandleRpc for StatisticsPanel {
     fn rpc(&mut self, ctx: &RpcContext, msg: &SMessage) {}
 }

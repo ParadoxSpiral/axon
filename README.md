@@ -13,13 +13,10 @@ Note: Currently termion does not respect terminfo and uses e.g. ANSI color codes
 Torrent panel:
 - `^i` will filter case insensitively, `^s` sensitively
 - `d` will open the selected torrents' details
+- `t` will open the tracker filter panel
 
 Torrent details:
 - `q` will close the current details pane
-
-Tracker panel:
-- same filterung rules as above
-
 
 # Windows
 Termion currently does not support windows, but might in the future ([#103](https://github.com/ticki/termion/issues/103)) (I really don't care about Windows, and dislike you for using it).

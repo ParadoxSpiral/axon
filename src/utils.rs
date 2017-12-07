@@ -19,61 +19,83 @@ use unicode_segmentation::UnicodeSegmentation;
 use unicode_width::UnicodeWidthStr;
 
 pub mod align {
-    use termion::cursor;
-    use std::io::Write;
-    use super::*;
-
-    pub trait Align {
-        fn align_offset(lines: &[&str], width: u16) -> Alignment;
-        fn align(_target: &mut Vec<u8>, _lines: &[&str]) {
-            unimplemented!()
-        }
-    }
-
-    pub enum Alignment {
-        Single(u16),
-        Each(Vec<u16>),
-    }
-
-    pub struct Left {}
-    impl Align for Left {
-        fn align(target: &mut Vec<u8>, lines: &[&str]) {
-            for l in lines {
-                write!(
-                    target,
-                    "{}{}{}",
-                    l,
-                    cursor::Left(count_without_styling(l) as u16),
-                    cursor::Down(1)
-                ).unwrap();
+    pub mod x {
+        use termion::cursor;
+        use std::io::Write;
+        use super::super::*;
+        pub trait Align {
+            fn align_offset(lines: &[&str], width: u16) -> Alignment;
+            fn align(_target: &mut Vec<u8>, _lines: &[&str]) {
+                unimplemented!()
             }
         }
-        fn align_offset(_: &[&str], _: u16) -> Alignment {
-            Alignment::Single(0)
-        }
-    }
 
-    pub struct Center {}
-    impl Align for Center {
-        fn align_offset(lines: &[&str], width: u16) -> Alignment {
-            let mut algns = Vec::with_capacity(lines.len());
-            for l in lines {
-                algns.push((width / 2).saturating_sub((l.len() / 2) as u16));
+        pub enum Alignment {
+            Single(u16),
+            Each(Vec<u16>),
+        }
+
+        pub struct Left {}
+        impl Align for Left {
+            fn align(target: &mut Vec<u8>, lines: &[&str]) {
+                for l in lines {
+                    write!(
+                        target,
+                        "{}{}{}",
+                        l,
+                        cursor::Left(count_without_styling(l) as u16),
+                        cursor::Down(1)
+                    ).unwrap();
+                }
             }
-            Alignment::Each(algns)
+            fn align_offset(_: &[&str], _: u16) -> Alignment {
+                Alignment::Single(0)
+            }
+        }
+
+        pub struct Center {}
+        impl Align for Center {
+            fn align_offset(lines: &[&str], width: u16) -> Alignment {
+                let mut algns = Vec::with_capacity(lines.len());
+                for l in lines {
+                    algns.push((width / 2).saturating_sub((l.len() / 2) as u16));
+                }
+                Alignment::Each(algns)
+            }
+        }
+
+        pub struct CenterLongestLeft {}
+        impl Align for CenterLongestLeft {
+            fn align_offset(lines: &[&str], width: u16) -> Alignment {
+                let max_len = lines
+                    .iter()
+                    .map(|l| count_without_styling(*l))
+                    .max()
+                    .unwrap() as u16;
+
+                Alignment::Single((width / 2).saturating_sub(max_len / 2))
+            }
         }
     }
 
-    pub struct CenterLongestLeft {}
-    impl Align for CenterLongestLeft {
-        fn align_offset(lines: &[&str], width: u16) -> Alignment {
-            let max_len = lines
-                .iter()
-                .map(|l| count_without_styling(*l))
-                .max()
-                .unwrap() as u16;
+    pub mod y {
+        pub trait Align {
+            // Unlike the x alignment, this may not vary
+            fn align_offset(lines: &[&str], height: u16) -> u16;
+        }
 
-            Alignment::Single((width / 2).saturating_sub(max_len / 2))
+        pub struct Top {}
+        impl Align for Top {
+            fn align_offset(_: &[&str], _: u16) -> u16 {
+                0
+            }
+        }
+
+        pub struct Center {}
+        impl Align for Center {
+            fn align_offset(lines: &[&str], height: u16) -> u16 {
+                (height / 2).saturating_sub(lines.len() as u16)
+            }
         }
     }
 }
