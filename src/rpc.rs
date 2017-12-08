@@ -19,6 +19,7 @@ use libc;
 use parking_lot::{Condvar, Mutex};
 use url::Url;
 use serde_json;
+use synapse_rpc;
 use websocket::ClientBuilder;
 use websocket::client::sync::Client;
 use websocket::message::OwnedMessage;
@@ -51,10 +52,27 @@ impl<'a> RpcContext<'a> {
     pub fn init(&self, mut srv: Url, pass: &str) -> Result<(), String> {
         let url = srv.query_pairs_mut().append_pair("password", pass).finish();
         // FIXME: can't specify timeout -> connect to ws://1.1.1.1 -> 2.5m wait time until timeout
-        let client = ClientBuilder::new(url.as_str())
+        let mut client = ClientBuilder::new(url.as_str())
             .map_err(|err| format!("{}", err))?
             .connect(None)
             .map_err(|err| format!("{:?}", err))?;
+
+        let msg = client.recv_message();
+        if let Ok(OwnedMessage::Text(msg)) = msg {
+            let srv_ver = serde_json::from_str::<synapse_rpc::message::Version>(&msg)
+                .map_err(|err| format!("{:?}", err))?;
+            if srv_ver.major != synapse_rpc::MAJOR_VERSION {
+                return Err(format!(
+                    "Server version {:?} incompatible with client {}.{}",
+                    srv_ver,
+                    synapse_rpc::MAJOR_VERSION,
+                    synapse_rpc::MINOR_VERSION
+                ));
+            }
+        } else {
+            return Err(format!("Expected server version, got {:?}", msg));
+        }
+
         (**client.stream_ref())
             .as_tcp()
             .set_nonblocking(true)
