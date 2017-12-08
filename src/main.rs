@@ -33,8 +33,7 @@ mod rpc;
 pub mod utils;
 mod view;
 
-use termion::event;
-use termion::input::TermReadEventsAndRaw;
+use termion::input::TermRead;
 use termion::raw::IntoRawMode;
 
 use std::io;
@@ -66,17 +65,9 @@ fn main() {
         // Input worker
         scope.spawn(|| {
             let stdin = io::stdin();
-            let ev_iter = stdin.lock().events_and_raw();
-
-            for ev in ev_iter {
-                let res = if let Ok(ev) = ev {
-                    if let event::Event::Key(k) = ev.0 {
-                        view.handle_input(&rpc, k)
-                    } else if let event::Event::Unsupported(_) = ev.0 {
-                        continue;
-                    } else {
-                        unreachable!("mouse support not enabled")
-                    }
+            for ev in stdin.lock().keys() {
+                let res = if let Ok(k) = ev {
+                    view.handle_input(&rpc, k)
                 } else {
                     running.store(false, Ordering::Release);
                     rpc.wake();
