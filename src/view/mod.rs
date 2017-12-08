@@ -15,14 +15,17 @@
 
 pub mod tui;
 
-use parking_lot::Mutex;
+use parking_lot::{Condvar, Mutex};
 use synapse_rpc::message::SMessage;
 use termion::{self, clear, cursor};
 use termion::event::Key;
+use websocket;
 
 use std::cell::RefCell;
 use std::io::{Stdout, StdoutLock, Write};
 use std::mem::{self, ManuallyDrop};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::time::Duration;
 
 use rpc::RpcContext;
 use self::tui::{widgets, Component, InputResult, Renderable};
@@ -37,6 +40,9 @@ pub struct View<'a> {
     content: Mutex<DisplayState>,
     render_buf: Mutex<Vec<u8>>,
     stdout: RefCell<StdoutLock<'a>>,
+    waiter: (Condvar, Mutex<()>),
+    // Unfortunately can't check with Any::is if the component is the login panel
+    logged_in: RefCell<bool>,
 }
 
 unsafe impl<'a> Send for View<'a> {}
@@ -63,7 +69,13 @@ impl<'a> View<'a> {
             content: Mutex::new(DisplayState::Component(panel)),
             render_buf: Mutex::new(rb),
             stdout: RefCell::new(stdout.lock()),
+            waiter: (Condvar::new(), Mutex::new(())),
+            logged_in: RefCell::new(false),
         }
+    }
+
+    pub fn wake(&self) {
+        self.waiter.0.notify_one();
     }
 
     pub fn render(&self) {
@@ -97,9 +109,25 @@ impl<'a> View<'a> {
         }
     }
 
+    pub fn render_until_death(&self, running: &AtomicBool) {
+        while running.load(Ordering::Acquire) {
+            // Update either every 3s or when input demands it
+            self.render();
+            self.waiter
+                .0
+                .wait_for(&mut self.waiter.1.lock(), Duration::from_millis(2500));
+        }
+    }
+
     pub fn handle_input(&self, ctx: &RpcContext, k: Key) -> InputResult {
         match k {
-            Key::Ctrl('d') => InputResult::Close,
+            Key::Ctrl('d') => if !*self.logged_in.borrow() {
+                InputResult::Close
+            } else {
+                ctx.server_close();
+                self.server_close(None);
+                InputResult::Rerender
+            },
             _ => {
                 let mut cnt = self.content.lock();
 
@@ -126,6 +154,10 @@ impl<'a> View<'a> {
                     };
                     match ret {
                         InputResult::ReplaceWith(comp) => {
+                            let mut li = self.logged_in.borrow_mut();
+                            if !*li {
+                                *li = true;
+                            }
                             *cnt = DisplayState::Component(comp);
                             InputResult::Rerender
                         }
@@ -160,5 +192,19 @@ impl<'a> View<'a> {
             }
         };
         ManuallyDrop::new(mem::replace(&mut *cnt, new));
+    }
+
+    pub fn server_close(&self, data: Option<websocket::CloseData>) {
+        let mut cnt = self.content.lock();
+        *self.logged_in.borrow_mut() = false;
+        let msg = data.and_then(|data| Some(format!("Server closed, reason: {:?}", data)))
+            .unwrap_or_else(|| "Disconnected".to_owned());
+        mem::replace(
+            &mut *cnt,
+            DisplayState::GlobalErr(
+                msg,
+                Box::new(widgets::IgnoreRpcPassInput::new(tui::LoginPanel::new())),
+            ),
+        );
     }
 }

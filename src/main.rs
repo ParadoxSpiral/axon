@@ -33,14 +33,12 @@ mod rpc;
 pub mod utils;
 mod view;
 
-use parking_lot::{Condvar, Mutex};
 use termion::event;
 use termion::input::TermReadEventsAndRaw;
 use termion::raw::IntoRawMode;
 
 use std::io;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::time::Duration;
 
 use rpc::RpcContext;
 use view::View;
@@ -51,24 +49,18 @@ use view::tui::InputResult;
 fn main() {
     let running = AtomicBool::new(true);
     let stdout = io::stdout().into_raw_mode().unwrap();
-    let (render_wakeup, rpc_wakeup) = (Condvar::new(), Condvar::new());
     let view = View::init(&stdout);
-    let rpc_ctx = RpcContext::empty(&rpc_wakeup);
+    let rpc = RpcContext::new();
 
     crossbeam::scope(|scope| {
+        // View worker
         scope.spawn(|| {
-            let waiter = Mutex::new(());
-            let mut waiter = waiter.lock();
-            while running.load(Ordering::Acquire) {
-                // Update either every 3s or when input demands it
-                view.render();
-                render_wakeup.wait_for(&mut waiter, Duration::from_secs(3));
-            }
+            view.render_until_death(&running);
         });
 
         // RPC worker
         scope.spawn(|| {
-            rpc_ctx.recv_until_death(&running, &view);
+            rpc.recv_until_death(&running, &view);
         });
 
         // Input worker
@@ -79,7 +71,7 @@ fn main() {
             for ev in ev_iter {
                 let res = if let Ok(ev) = ev {
                     if let event::Event::Key(k) = ev.0 {
-                        view.handle_input(&rpc_ctx, k)
+                        view.handle_input(&rpc, k)
                     } else if let event::Event::Unsupported(_) = ev.0 {
                         continue;
                     } else {
@@ -87,20 +79,20 @@ fn main() {
                     }
                 } else {
                     running.store(false, Ordering::Release);
-                    render_wakeup.notify_one();
-                    rpc_wakeup.notify_one();
+                    rpc.wake();
+                    view.wake();
                     panic!("Unrecoverable error: {:?}", ev.unwrap_err())
                 };
 
                 match res {
                     InputResult::Close => {
                         running.store(false, Ordering::Release);
-                        render_wakeup.notify_one();
-                        rpc_wakeup.notify_one();
+                        rpc.wake();
+                        view.wake();
                         break;
                     }
                     InputResult::Rerender => {
-                        render_wakeup.notify_one();
+                        view.wake();
                     }
                     InputResult::Key(_) => {}
                     _ => unreachable!(),

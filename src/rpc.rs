@@ -33,19 +33,21 @@ use std::time::Duration;
 
 use view::View;
 
-pub struct RpcContext<'a> {
+pub struct RpcContext {
     socket: RefCell<Option<Mutex<Client<Box<NetworkStream + Send>>>>>,
-    waiter: (&'a Condvar, Mutex<()>),
+    waiter: (Condvar, Mutex<()>),
+    server_close: AtomicBool,
 }
 
-unsafe impl<'a> Send for RpcContext<'a> {}
-unsafe impl<'a> Sync for RpcContext<'a> {}
+unsafe impl Send for RpcContext {}
+unsafe impl Sync for RpcContext {}
 
-impl<'a> RpcContext<'a> {
-    pub fn empty(cnd: &'a Condvar) -> RpcContext<'a> {
+impl RpcContext {
+    pub fn new() -> RpcContext {
         RpcContext {
             socket: RefCell::new(None),
-            waiter: (cnd, Mutex::new(())),
+            waiter: (Condvar::new(), Mutex::new(())),
+            server_close: AtomicBool::new(false),
         }
     }
 
@@ -83,51 +85,84 @@ impl<'a> RpcContext<'a> {
         Ok(())
     }
 
-    pub fn recv_until_death(&self, running: &AtomicBool, view: &View) {
-        self.waiter.0.wait(&mut self.waiter.1.lock());
-        // Check if exited before login
+    pub fn wake(&self) {
+        self.waiter.0.notify_one();
+    }
+
+    pub fn server_close(&self) {
+        self.server_close.store(true, Ordering::Release);
         let socket = self.socket.borrow();
-        if socket.is_none() {
-            return;
-        }
-        let socket = socket.as_ref().unwrap();
-        'OUTER: while running.load(Ordering::Acquire) {
-            let mut ws = socket.lock();
-            loop {
-                match ws.recv_message() {
-                    Ok(OwnedMessage::Ping(p)) => {
-                        if let Err(err) = ws.send_message(&OwnedMessage::Pong(p)) {
-                            view.global_err(format!("{}", err.description()));
-                        };
-                    }
-                    Ok(OwnedMessage::Text(s)) => {
-                        let s: Result<::synapse_rpc::message::SMessage, _> =
-                            serde_json::from_str(&s);
-                        if let Err(err) = s {
-                            view.global_err(format!("{}", err.description()));
-                        } else {
-                            drop(ws);
-                            view.handle_rpc(self, &s.unwrap());
-                            continue 'OUTER;
+        let mut socket = socket.as_ref().unwrap().lock();
+        let _ = socket.send_message(&OwnedMessage::Close(None));
+    }
+
+    pub fn recv_until_death(&self, running: &AtomicBool, view: &View) {
+        // Each iteration represents the lifetime of a connection to a server
+        'SERVER_LIFE: loop {
+            self.waiter.0.wait(&mut self.waiter.1.lock());
+            // FIXME: This scope is needed because >tfw no NLL ← can't nicely drop socket
+            {
+                // Check if exited before login
+                let socket = self.socket.borrow();
+                if socket.is_none() {
+                    return;
+                }
+                let socket = socket.as_ref().unwrap();
+                'RUNNING: while running.load(Ordering::Acquire) {
+                    let mut ws = socket.lock();
+                    loop {
+                        if self.server_close
+                            .compare_and_swap(true, false, Ordering::AcqRel)
+                        {
+                            continue 'SERVER_LIFE;
+                        }
+                        match ws.recv_message() {
+                            Ok(OwnedMessage::Ping(p)) => {
+                                if let Err(err) = ws.send_message(&OwnedMessage::Pong(p)) {
+                                    view.global_err(format!("{}", err.description()));
+                                };
+                            }
+                            Ok(OwnedMessage::Close(data)) => {
+                                view.server_close(data);
+                                continue 'SERVER_LIFE;
+                            }
+                            Ok(OwnedMessage::Text(s)) => {
+                                let s: Result<
+                                    ::synapse_rpc::message::SMessage,
+                                    _,
+                                > = serde_json::from_str(&s);
+                                if let Err(err) = s {
+                                    view.global_err(format!("{}", err.description()));
+                                } else {
+                                    drop(ws);
+                                    view.handle_rpc(self, &s.unwrap());
+                                    continue 'RUNNING;
+                                }
+                            }
+                            Err(WebSocketError::NoDataAvailable) => {
+                                break;
+                            }
+                            // wtf, so much for NoDataAvailable
+                            Err(WebSocketError::IoError(ref err))
+                                if err.raw_os_error() == Some(libc::EAGAIN) =>
+                            {
+                                break;
+                            }
+                            err => {
+                                view.global_err(format!("{:?}", err));
+                            }
                         }
                     }
-                    Err(WebSocketError::NoDataAvailable) => {
-                        break;
-                    }
-                    // wtf, so much for NoDataAvailable
-                    Err(WebSocketError::IoError(ref err))
-                        if err.raw_os_error() == Some(libc::EAGAIN) =>
-                    {
-                        break;
-                    }
-                    err => {
-                        view.global_err(format!("{:?}", err));
-                    }
+                    self.waiter
+                        .0
+                        .wait_for(&mut self.waiter.1.lock(), Duration::from_millis(2500));
                 }
             }
-            self.waiter
-                .0
-                .wait_for(&mut self.waiter.1.lock(), Duration::from_millis(2500));
+            if !running.load(Ordering::Acquire) {
+                break 'SERVER_LIFE;
+            } else {
+                *self.socket.borrow_mut() = None;
+            }
         }
     }
 }
