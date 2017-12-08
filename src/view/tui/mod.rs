@@ -164,7 +164,7 @@ impl HandleInput for LoginPanel {
                         .map_err(|err| format!("Synapse: {}", err))
                 }) {
                 let len = err.len();
-                let overlay = Box::new(widgets::Overlay::new(
+                let overlay = Box::new(widgets::OwnedOverlay::new(
                     widgets::CloseOnInput::new(widgets::IgnoreRpc::new(
                         widgets::OwnedText::<align::x::Center, align::y::Top>::new(err),
                     )),
@@ -266,7 +266,7 @@ impl Renderable for TorrentPanel {
                         0.65,
                     ),
                     true,
-                    0.5,
+                    0.2,
                 ).render(target, width, height, x_off, y_off);
             }
         }

@@ -22,15 +22,19 @@ use termion::event::Key;
 
 use std::cell::RefCell;
 use std::io::{Stdout, StdoutLock, Write};
-use std::mem;
+use std::mem::{self, ManuallyDrop};
 
 use rpc::RpcContext;
-use self::tui::{widgets, InputResult, Renderable};
+use self::tui::{widgets, Component, InputResult, Renderable};
 use utils::align;
 
+enum DisplayState {
+    GlobalErr(String, Box<Component>),
+    Component(Box<Component>),
+}
+
 pub struct View<'a> {
-    content: Mutex<Box<tui::Component>>,
-    global_err: RefCell<Option<String>>,
+    content: Mutex<DisplayState>,
     render_buf: Mutex<Vec<u8>>,
     stdout: RefCell<StdoutLock<'a>>,
 }
@@ -56,8 +60,7 @@ impl<'a> View<'a> {
 
         write!(rb, "{}", cursor::Hide).unwrap();
         View {
-            content: Mutex::new(panel),
-            global_err: RefCell::new(None),
+            content: Mutex::new(DisplayState::Component(panel)),
             render_buf: Mutex::new(rb),
             stdout: RefCell::new(stdout.lock()),
         }
@@ -69,21 +72,18 @@ impl<'a> View<'a> {
             let mut buf = self.render_buf.lock();
             write!(buf, "{}", clear::All).unwrap();
 
-            if let Some(ref err) = *self.global_err.borrow() {
-                let mut ov = widgets::Overlay::new(
-                    widgets::CloseOnInput::new(widgets::IgnoreRpc::new(
-                        widgets::BorrowedText::<align::x::Center, align::y::Top>::new(err),
-                    )),
-                    unsafe {
-                        Box::from_raw((&mut **cnt) as *const tui::Component as *mut tui::Component)
-                    },
-                    (err.len() as u16 + 2, 1),
-                    termion::color::Red,
-                );
-                ov.render(&mut buf, width, height, 1, 1);
-                mem::forget(ov.into_below());
-            } else {
-                cnt.render(&mut buf, width, height, 1, 1);
+            match *cnt {
+                DisplayState::Component(ref mut cmp) => {
+                    cmp.render(&mut buf, width, height, 1, 1);
+                }
+                DisplayState::GlobalErr(ref err, ref mut cmp) => {
+                    widgets::BorrowedOverlay::new(
+                        &mut widgets::BorrowedText::<align::x::Center, align::y::Top>::new(err),
+                        &mut **cmp,
+                        (err.len() as u16 + 2, 1),
+                        Some(&termion::color::Red),
+                    ).render(&mut buf, width, height, 1, 1);
+                }
             }
 
             let mut out = self.stdout.borrow_mut();
@@ -102,28 +102,63 @@ impl<'a> View<'a> {
             Key::Ctrl('d') => InputResult::Close,
             _ => {
                 let mut cnt = self.content.lock();
-                *self.global_err.borrow_mut() = None;
-                let ret = cnt.input(ctx, k);
-                match ret {
-                    InputResult::ReplaceWith(comp) => {
-                        let _ = mem::replace(&mut *cnt, comp);
-                        InputResult::Rerender
+
+                // FIXME: NLL
+                let was_err = if let DisplayState::GlobalErr(_, _) = *cnt {
+                    true
+                } else {
+                    false
+                };
+                let new = match *cnt {
+                    DisplayState::GlobalErr(_, ref mut cmp)
+                    | DisplayState::Component(ref mut cmp) => DisplayState::Component(
+                        unsafe { Box::from_raw((&mut **cmp) as *mut Component) },
+                    ),
+                };
+                ManuallyDrop::new(mem::replace(&mut *cnt, new));
+                // Simulate CloseOnInput
+                if was_err {
+                    InputResult::Rerender
+                } else {
+                    let ret = match *cnt {
+                        DisplayState::GlobalErr(_, ref mut cmp)
+                        | DisplayState::Component(ref mut cmp) => cmp.input(ctx, k),
+                    };
+                    match ret {
+                        InputResult::ReplaceWith(comp) => {
+                            *cnt = DisplayState::Component(comp);
+                            InputResult::Rerender
+                        }
+                        _ => ret,
                     }
-                    _ => ret,
                 }
             }
         }
     }
 
     pub fn handle_rpc(&self, ctx: &RpcContext, msg: &SMessage) {
-        self.content.lock().rpc(ctx, msg);
+        // FIXME: NLL
+        let mut cnt = self.content.lock();
+        match *cnt {
+            DisplayState::GlobalErr(_, ref mut cmp) | DisplayState::Component(ref mut cmp) => {
+                cmp.rpc(ctx, msg)
+            }
+        }
     }
 
     pub fn global_err<T>(&self, err: T)
     where
         T: ::std::fmt::Display,
     {
-        let cnt = self.content.lock();
-        *self.global_err.borrow_mut() = Some(format!("{}", err));
+        // FIXME: NLL
+        let mut cnt = self.content.lock();
+        let new = match *cnt {
+            DisplayState::GlobalErr(_, ref mut cmp) | DisplayState::Component(ref mut cmp) => {
+                DisplayState::GlobalErr(format!("{}", err), unsafe {
+                    Box::from_raw((&mut **cmp) as *mut Component)
+                })
+            }
+        };
+        ManuallyDrop::new(mem::replace(&mut *cnt, new));
     }
 }

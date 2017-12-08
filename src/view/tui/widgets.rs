@@ -300,51 +300,44 @@ impl HandleRpc for Tabs {
     }
 }
 
-pub struct Overlay<T, C>
+pub struct BorrowedOverlay<'a, T: 'a, B: 'a, C: 'a>
 where
-    T: Component,
+    T: Renderable + ?Sized,
+    B: Renderable + ?Sized,
     C: Color,
 {
-    top: T,
-    below: ManuallyDrop<Box<Component>>,
+    top: &'a mut T,
+    below: &'a mut B,
     top_dimensions: (u16, u16),
-    box_color: Option<C>,
+    box_color: Option<&'a C>,
 }
 
-impl<T, C> Overlay<T, C>
+impl<'a, T, B, C> BorrowedOverlay<'a, T, B, C>
 where
-    T: Component,
+    T: Renderable + ?Sized,
+    B: Component + ?Sized,
     C: Color,
 {
-    pub fn new<I: Into<Option<C>>>(
-        top: T,
-        below: Box<Component>,
+    pub fn new(
+        top: &'a mut T,
+        below: &'a mut B,
         top_dimensions: (u16, u16),
-        box_color: I,
-    ) -> Overlay<T, C> {
+        box_color: Option<&'a C>,
+    ) -> BorrowedOverlay<'a, T, B, C> {
         assert!(top_dimensions.0 > 0 && top_dimensions.1 > 0);
-        Overlay {
+        BorrowedOverlay {
             top: top,
-            below: ManuallyDrop::new(below),
+            below: below,
             top_dimensions: top_dimensions,
-            box_color: box_color.into(),
+            box_color: box_color,
         }
     }
-    pub fn into_below(self) -> Box<Component> {
-        ManuallyDrop::into_inner(self.below)
-    }
 }
 
-impl<T, C> Component for Overlay<T, C>
+impl<'a, T, B, C> Renderable for BorrowedOverlay<'a, T, B, C>
 where
-    T: Component,
-    C: Color,
-{
-}
-
-impl<T, C> Renderable for Overlay<T, C>
-where
-    T: Component,
+    T: Renderable + ?Sized,
+    B: Component + ?Sized,
     C: Color,
 {
     fn name(&self) -> String {
@@ -359,7 +352,7 @@ where
 
         // Prepare writing the overlay box
         let delim_hor = (0..self.top_dimensions.0).fold("".to_owned(), |s, _| s + "─");
-        let (start_color, end_color) = if let Some(ref c) = self.box_color {
+        let (start_color, end_color) = if let Some(c) = self.box_color {
             (
                 format!("{}", color::Fg(c as &Color)),
                 format!("{}", color::Fg(color::Reset)),
@@ -412,7 +405,74 @@ where
     }
 }
 
-impl<T, C> HandleInput for Overlay<T, C>
+pub struct OwnedOverlay<T, C>
+where
+    T: Component,
+    C: Color,
+{
+    top: T,
+    below: ManuallyDrop<Box<Component>>,
+    top_dimensions: (u16, u16),
+    box_color: Option<C>,
+}
+impl<T, C> OwnedOverlay<T, C>
+where
+    T: Component,
+    C: Color,
+{
+    pub fn new<I: Into<Option<C>>>(
+        top: T,
+        below: Box<Component>,
+        top_dimensions: (u16, u16),
+        box_color: I,
+    ) -> OwnedOverlay<T, C> {
+        assert!(top_dimensions.0 > 0 && top_dimensions.1 > 0);
+        OwnedOverlay {
+            top: top,
+            below: ManuallyDrop::new(below),
+            top_dimensions: top_dimensions,
+            box_color: box_color.into(),
+        }
+    }
+}
+
+impl<T, C> Component for OwnedOverlay<T, C>
+where
+    T: Component,
+    C: Color,
+{
+}
+
+impl<T, C> Renderable for OwnedOverlay<T, C>
+where
+    T: Component,
+    C: Color,
+{
+    fn name(&self) -> String {
+        format!("overlay: {}^_{}", self.top.name(), self.below.name())
+    }
+    fn render(&mut self, target: &mut Vec<u8>, width: u16, height: u16, x_off: u16, y_off: u16) {
+        BorrowedOverlay::<_, _, C>::new(
+            &mut self.top,
+            &mut **self.below,
+            self.top_dimensions,
+            self.box_color.as_ref(),
+        ).render(target, width, height, x_off, y_off)
+    }
+}
+
+impl<T, C> HandleRpc for OwnedOverlay<T, C>
+where
+    T: Component,
+    C: Color,
+{
+    fn rpc(&mut self, ctx: &RpcContext, msg: &SMessage) {
+        self.top.rpc(ctx, msg);
+        self.below.rpc(ctx, msg);
+    }
+}
+
+impl<T, C> HandleInput for OwnedOverlay<T, C>
 where
     T: Component,
     C: Color,
@@ -425,17 +485,6 @@ where
             }),
             _ => ret,
         }
-    }
-}
-
-impl<T, C> HandleRpc for Overlay<T, C>
-where
-    T: Component,
-    C: Color,
-{
-    fn rpc(&mut self, ctx: &RpcContext, msg: &SMessage) {
-        self.top.rpc(ctx, msg);
-        self.below.rpc(ctx, msg);
     }
 }
 
