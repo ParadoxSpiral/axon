@@ -678,20 +678,21 @@ impl Input {
                 style::NoUnderline,
             )
         } else {
+            // FIXME: allocs less than ideal
             format!(
                 "{}{}{}{}{}",
-                &self.content[..self.pos - 1],
+                &self.content.graphemes(true).take(self.pos - 1).collect::<String>(),
                 style::Underline,
                 if self.pos > 1 || !self.content.is_empty() {
-                    &self.content[self.pos - 1..self.pos]
+                    self.content.graphemes(true).skip(self.pos - 1).take(1).collect::<String>()
                 } else {
-                    " "
+                    " ".into()
                 },
                 style::NoUnderline,
                 if self.pos + 1 <= len {
-                    &self.content[self.pos..]
+                    self.content.graphemes(true).skip(self.pos).collect::<String>()
                 } else {
-                    ""
+                    "".into()
                 }
             )
         }
