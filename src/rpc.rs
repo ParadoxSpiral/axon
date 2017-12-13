@@ -153,6 +153,7 @@ impl RpcContext {
                             }
                         }
                     }
+                    drop(ws);
                     self.waiter
                         .0
                         .wait_for(&mut self.waiter.1.lock(), Duration::from_millis(2500));
