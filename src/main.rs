@@ -49,7 +49,7 @@ fn main() {
     let running = AtomicBool::new(true);
     let stdout = io::stdout().into_raw_mode().unwrap();
     let view = View::init(&stdout);
-    let rpc = RpcContext::new();
+    let rpc = RpcContext::new(&view);
 
     crossbeam::scope(|scope| {
         // View worker
@@ -59,7 +59,7 @@ fn main() {
 
         // RPC worker
         scope.spawn(|| {
-            rpc.recv_until_death(&running, &view);
+            rpc.recv_until_death(&running);
         });
 
         // Input worker

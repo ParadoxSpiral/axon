@@ -20,6 +20,7 @@ use parking_lot::{Condvar, Mutex};
 use url::Url;
 use serde_json;
 use synapse_rpc;
+use synapse_rpc::message::CMessage;
 use websocket::ClientBuilder;
 use websocket::client::sync::Client;
 use websocket::message::OwnedMessage;
@@ -28,26 +29,31 @@ use websocket::stream::sync::NetworkStream;
 
 use std::cell::RefCell;
 use std::error::Error;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::time::Duration;
 
 use view::View;
 
-pub struct RpcContext {
+pub struct RpcContext<'a, 'b: 'a> {
     socket: RefCell<Option<Mutex<Client<Box<NetworkStream + Send>>>>>,
     waiter: (Condvar, Mutex<()>),
     server_close: AtomicBool,
+    // FIXME: Once feature `integer atomics` lands, switch to AtomicU64
+    serial: AtomicUsize,
+    view: &'a View<'b>,
 }
 
-unsafe impl Send for RpcContext {}
-unsafe impl Sync for RpcContext {}
+unsafe impl<'a, 'b> Send for RpcContext<'a, 'b> {}
+unsafe impl<'a, 'b> Sync for RpcContext<'a, 'b> {}
 
-impl RpcContext {
-    pub fn new() -> RpcContext {
+impl<'a, 'b> RpcContext<'a, 'b> {
+    pub fn new(view: &'a View<'b>) -> RpcContext<'a, 'b> {
         RpcContext {
             socket: RefCell::new(None),
             waiter: (Condvar::new(), Mutex::new(())),
             server_close: AtomicBool::new(false),
+            serial: AtomicUsize::new(0),
+            view: view,
         }
     }
 
@@ -85,6 +91,22 @@ impl RpcContext {
         Ok(())
     }
 
+    pub fn next_serial(&self) -> u64 {
+        self.serial.fetch_add(1, Ordering::AcqRel) as _
+    }
+
+    pub fn send(&self, msg: CMessage) {
+        let ws = self.socket.borrow();
+        let ws = ws.as_ref().unwrap();
+        let _ = serde_json::to_string(&msg)
+            .map_err(|err| self.view.global_err(format!("{}", err.description())))
+            .map(|msg| {
+                if let Err(err) = ws.lock().send_message(&OwnedMessage::Text(msg)) {
+                    self.view.global_err(format!("{}", err.description()));
+                };
+            });
+    }
+
     pub fn wake(&self) {
         self.waiter.0.notify_one();
     }
@@ -96,7 +118,7 @@ impl RpcContext {
         let _ = socket.send_message(&OwnedMessage::Close(None));
     }
 
-    pub fn recv_until_death(&self, running: &AtomicBool, view: &View) {
+    pub fn recv_until_death(&self, running: &AtomicBool) {
         // Each iteration represents the lifetime of a connection to a server
         'SERVER_LIFE: loop {
             self.waiter.0.wait(&mut self.waiter.1.lock());
@@ -119,11 +141,11 @@ impl RpcContext {
                         match ws.recv_message() {
                             Ok(OwnedMessage::Ping(p)) => {
                                 if let Err(err) = ws.send_message(&OwnedMessage::Pong(p)) {
-                                    view.global_err(format!("{}", err.description()));
+                                    self.view.global_err(format!("{}", err.description()));
                                 };
                             }
                             Ok(OwnedMessage::Close(data)) => {
-                                view.server_close(data);
+                                self.view.server_close(data);
                                 continue 'SERVER_LIFE;
                             }
                             Ok(OwnedMessage::Text(s)) => {
@@ -132,10 +154,10 @@ impl RpcContext {
                                     _,
                                 > = serde_json::from_str(&s);
                                 if let Err(err) = s {
-                                    view.global_err(format!("{}", err.description()));
+                                    self.view.global_err(format!("{}", err.description()));
                                 } else {
                                     drop(ws);
-                                    view.handle_rpc(self, &s.unwrap());
+                                    self.view.handle_rpc(self, &s.unwrap());
                                     continue 'RUNNING;
                                 }
                             }
@@ -149,7 +171,7 @@ impl RpcContext {
                                 break;
                             }
                             err => {
-                                view.global_err(format!("{:?}", err));
+                                self.view.global_err(format!("{:?}", err));
                             }
                         }
                     }
