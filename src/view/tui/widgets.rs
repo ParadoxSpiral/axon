@@ -750,6 +750,32 @@ impl PasswordInput {
     }
 }
 
+pub struct RenderFn<F>
+where
+    F: Fn(&mut Vec<u8>, u16, u16, u16, u16),
+{
+    ct: F,
+}
+impl<F> RenderFn<F>
+where
+    F: Fn(&mut Vec<u8>, u16, u16, u16, u16),
+{
+    pub fn new(fun: F) -> RenderFn<F> {
+        RenderFn { ct: fun }
+    }
+}
+impl<F> Renderable for RenderFn<F>
+where
+    F: Fn(&mut Vec<u8>, u16, u16, u16, u16),
+{
+    fn name(&self) -> String {
+        "Unnamed render fun".into()
+    }
+    fn render(&mut self, target: &mut Vec<u8>, width: u16, height: u16, x_off: u16, y_off: u16) {
+        (self.ct)(target, width, height, x_off, y_off);
+    }
+}
+
 pub struct CloseOnInput<T>
 where
     T: Renderable + HandleRpc,
