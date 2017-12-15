@@ -90,7 +90,7 @@ impl<'a> View<'a> {
                 }
                 DisplayState::GlobalErr(ref err, ref mut cmp) => {
                     widgets::BorrowedOverlay::new(
-                        &mut widgets::BorrowedText::<align::x::Center, align::y::Top>::new(err),
+                        &mut widgets::Text::<_, align::x::Center, align::y::Top>::new(&**err),
                         &mut **cmp,
                         (err.len() as u16 + 2, 1),
                         Some(&termion::color::Red),
@@ -139,15 +139,15 @@ impl<'a> View<'a> {
                 };
                 let new = match *cnt {
                     DisplayState::GlobalErr(_, ref mut cmp)
-                    | DisplayState::Component(ref mut cmp) => DisplayState::Component(
-                        unsafe { Box::from_raw((&mut **cmp) as *mut Component) },
-                    ),
+                    | DisplayState::Component(ref mut cmp) => DisplayState::Component(unsafe {
+                        Box::from_raw((&mut **cmp) as *mut Component)
+                    }),
                 };
                 ManuallyDrop::new(mem::replace(&mut *cnt, new));
-                // Simulate CloseOnInput
                 if was_err {
                     InputResult::Rerender
                 } else {
+                    // Simulate CloseOnInput
                     let ret = match *cnt {
                         DisplayState::GlobalErr(_, ref mut cmp)
                         | DisplayState::Component(ref mut cmp) => cmp.input(ctx, k),

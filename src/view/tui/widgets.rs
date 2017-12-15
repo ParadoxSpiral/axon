@@ -20,6 +20,7 @@ use termion::event::Key;
 use termion::{color, cursor, style};
 use unicode_segmentation::UnicodeSegmentation;
 
+use std::borrow::{Borrow, BorrowMut};
 use std::io::Write;
 use std::marker::PhantomData;
 use std::mem::{self, ManuallyDrop};
@@ -30,49 +31,53 @@ use utils;
 use utils::align::{self, x, y};
 use super::{Component, HandleInput, HandleRpc, InputResult, Renderable};
 
-pub struct BorrowedVSplit<'a, L: 'a, R: 'a>
+pub struct VSplit<'a, L: 'a, R: 'a>
 where
-    L: Renderable,
-    R: Renderable,
+    L: BorrowMut<Renderable + 'a>,
+    R: BorrowMut<Renderable + 'a>,
 {
-    left: &'a mut L,
-    right: &'a mut R,
+    left: L,
+    right: R,
     left_active: bool,
     left_size_factor: f32,
+    _marker: PhantomData<&'a ()>,
 }
 
-impl<'a, L, R> BorrowedVSplit<'a, L, R>
+impl<'a, L, R> VSplit<'a, L, R>
 where
-    L: Renderable,
-    R: Renderable,
+    L: BorrowMut<Renderable + 'a>,
+    R: BorrowMut<Renderable + 'a>,
 {
-    pub fn new(
-        left: &'a mut L,
-        right: &'a mut R,
-        left_active: bool,
-        left_size_factor: f32,
-    ) -> BorrowedVSplit<'a, L, R> {
-        BorrowedVSplit {
+    pub fn new(left: L, right: R, left_active: bool, left_size_factor: f32) -> VSplit<'a, L, R> {
+        assert!(left_size_factor < 1. && left_size_factor > 0.);
+        VSplit {
             left: left,
             right: right,
             left_active: left_active,
             left_size_factor: left_size_factor,
+            _marker: PhantomData,
         }
     }
 }
 
-impl<'a, L, R> Renderable for BorrowedVSplit<'a, L, R>
+impl<'a, L, R> Renderable for VSplit<'a, L, R>
 where
-    L: Renderable,
-    R: Renderable,
+    L: BorrowMut<Renderable + 'a>,
+    R: BorrowMut<Renderable + 'a>,
 {
     fn name(&self) -> String {
-        format!("({} ╍ {})", self.left.name(), self.right.name())
+        format!(
+            "({} ╍ {})",
+            self.left.borrow().name(),
+            self.right.borrow().name()
+        )
     }
     fn render(&mut self, target: &mut Vec<u8>, width: u16, height: u16, x_off: u16, y_off: u16) {
         // Draw left
         let left_w = (f32::from(width) * self.left_size_factor).floor() as u16;
-        self.left.render(target, left_w, height, x_off, y_off);
+        self.left
+            .borrow_mut()
+            .render(target, left_w, height, x_off, y_off);
 
         // Draw divider
         for i in 0..height {
@@ -91,7 +96,7 @@ where
         }
 
         // Draw right
-        self.right.render(
+        self.right.borrow_mut().render(
             target,
             width - left_w - 1,
             height,
@@ -101,49 +106,52 @@ where
     }
 }
 
-pub struct BorrowedHSplit<'a, T: 'a, B: 'a>
+pub struct HSplit<'a, T: 'a, B: 'a>
 where
-    T: Renderable,
-    B: Renderable,
+    T: BorrowMut<Renderable + 'a>,
+    B: BorrowMut<Renderable + 'a>,
 {
-    top: &'a mut T,
-    bot: &'a mut B,
+    top: T,
+    bot: B,
     top_active: bool,
     top_size_factor: f32,
+    _marker: PhantomData<&'a ()>,
 }
 
-impl<'a, T: 'a, B: 'a> BorrowedHSplit<'a, T, B>
+impl<'a, T: 'a, B: 'a> HSplit<'a, T, B>
 where
-    T: Renderable,
-    B: Renderable,
+    T: BorrowMut<Renderable + 'a>,
+    B: BorrowMut<Renderable + 'a>,
 {
-    pub fn new(
-        top: &'a mut T,
-        bot: &'a mut B,
-        top_active: bool,
-        top_size_factor: f32,
-    ) -> BorrowedHSplit<'a, T, B> {
-        BorrowedHSplit {
+    pub fn new(top: T, bot: B, top_active: bool, top_size_factor: f32) -> HSplit<'a, T, B> {
+        HSplit {
             top: top,
             bot: bot,
             top_active: top_active,
             top_size_factor: top_size_factor,
+            _marker: PhantomData,
         }
     }
 }
 
-impl<'a, T: 'a, B: 'a> Renderable for BorrowedHSplit<'a, T, B>
+impl<'a, T: 'a, B: 'a> Renderable for HSplit<'a, T, B>
 where
-    T: Renderable,
-    B: Renderable,
+    T: BorrowMut<Renderable + 'a>,
+    B: BorrowMut<Renderable + 'a>,
 {
     fn name(&self) -> String {
-        format!("({} ╏ {})", self.top.name(), self.bot.name())
+        format!(
+            "({} ╏ {})",
+            self.top.borrow().name(),
+            self.bot.borrow().name()
+        )
     }
     fn render(&mut self, target: &mut Vec<u8>, width: u16, height: u16, x_off: u16, y_off: u16) {
         // Draw top
         let top_h = (f32::from(height) * self.top_size_factor).floor() as u16;
-        self.top.render(target, width, top_h, x_off, y_off);
+        self.top
+            .borrow_mut()
+            .render(target, width, top_h, x_off, y_off);
 
         // Draw divider
         for i in 0..width {
@@ -163,6 +171,7 @@ where
 
         // Draw bot
         self.bot
+            .borrow_mut()
             .render(target, width, height - top_h - 1, x_off, y_off + top_h + 2);
     }
 }
@@ -227,7 +236,7 @@ impl Renderable for Tabs {
             if self.active_idx == i {
                 write!(target, "{}", color::Fg(color::Cyan)).unwrap();
             }
-            BorrowedText::<align::x::Left, align::y::Top>::new(&name).render(
+            Text::<_, align::x::Left, align::y::Top>::new(name).render(
                 target,
                 width / len - sep_l,
                 1,
@@ -488,23 +497,25 @@ where
     }
 }
 
-pub struct BorrowedText<'a, AX, AY>
+pub struct Text<T, AX, AY>
 where
+    T: Borrow<str>,
     AX: x::Align,
     AY: y::Align,
 {
-    content: &'a str,
+    content: T,
     _align_x: PhantomData<AX>,
     _align_y: PhantomData<AY>,
 }
 
-impl<'a, AX, AY> BorrowedText<'a, AX, AY>
+impl<T, AX, AY> Text<T, AX, AY>
 where
+    T: Borrow<str>,
     AX: x::Align,
     AY: y::Align,
 {
-    pub fn new(t: &str) -> BorrowedText<AX, AY> {
-        BorrowedText {
+    pub fn new(t: T) -> Text<T, AX, AY> {
+        Text {
             content: t,
             _align_x: PhantomData,
             _align_y: PhantomData,
@@ -512,8 +523,9 @@ where
     }
 }
 
-impl<'a, AX, AY> Renderable for BorrowedText<'a, AX, AY>
+impl<T, AX, AY> Renderable for Text<T, AX, AY>
 where
+    T: Borrow<str>,
     AX: x::Align,
     AY: y::Align,
 {
@@ -521,7 +533,8 @@ where
         "txt".into()
     }
     fn render(&mut self, target: &mut Vec<u8>, width: u16, height: u16, x_off: u16, y_off: u16) {
-        let x_off = x_off + match AX::align_offset(&[self.content], width) {
+        let content = self.content.borrow();
+        let x_off = x_off + match AX::align_offset(&[content], width) {
             x::Alignment::Single(x) => x,
             x::Alignment::Each(v) => {
                 // TODO: unimpl for n > 1
@@ -529,14 +542,16 @@ where
                 *v.first().unwrap()
             }
         };
-        let y_off = y_off + AY::align_offset(&[self.content], height);
-        let len = utils::count_without_styling(self.content);
+        let y_off = y_off + AY::align_offset(&[content], height);
+        let len = utils::count_without_styling(content);
 
         if width >= len as u16 {
-            write!(target, "{}{}", cursor::Goto(x_off, y_off), self.content).unwrap();
+            write!(target, "{}{}", cursor::Goto(x_off, y_off), content).unwrap();
         } else {
             // FIXME: don't break up escape sequences
-            let chunks = self.content.graphemes(true).chunks((width - 1) as usize);
+            let chunks = content
+                .graphemes(true)
+                .chunks(width.saturating_sub(1) as usize);
             let mut chunks = chunks.into_iter().map(|c| c.collect::<String>()).peekable();
             let mut i = 0;
             while let Some(chunk) = chunks.next() {
@@ -570,43 +585,6 @@ where
                 }
             }
         }
-    }
-}
-
-pub struct OwnedText<AX, AY>
-where
-    AX: x::Align,
-    AY: y::Align,
-{
-    content: String,
-    _align_x: PhantomData<AX>,
-    _align_y: PhantomData<AY>,
-}
-
-impl<AX, AY> OwnedText<AX, AY>
-where
-    AX: x::Align,
-    AY: y::Align,
-{
-    pub fn new(t: String) -> OwnedText<AX, AY> {
-        OwnedText {
-            content: t,
-            _align_x: PhantomData,
-            _align_y: PhantomData,
-        }
-    }
-}
-
-impl<AX, AY> Renderable for OwnedText<AX, AY>
-where
-    AX: x::Align,
-    AY: y::Align,
-{
-    fn name(&self) -> String {
-        "txt".into()
-    }
-    fn render(&mut self, target: &mut Vec<u8>, width: u16, height: u16, x_off: u16, y_off: u16) {
-        BorrowedText::<AX, AY>::new(&self.content).render(target, width, height, x_off, y_off);
     }
 }
 
