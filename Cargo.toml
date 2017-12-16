@@ -5,7 +5,6 @@ authors = ["Jonathan Schleußer <paradoxspiral@riseup.net>"]
 
 [dependencies]
 crossbeam = "0.3"
-itertools = "0.7"
 libc = "0.2"
 parking_lot = "0.5"
 reqwest = "0.8"

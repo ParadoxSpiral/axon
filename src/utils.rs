@@ -15,9 +15,6 @@
 // You should have received a copy of the GNU General Public License
 // along with Axon.  If not, see <http://www.gnu.org/licenses/>.
 
-use unicode_segmentation::UnicodeSegmentation;
-use unicode_width::UnicodeWidthStr;
-
 pub mod align {
     pub mod x {
         use termion::cursor;
@@ -100,6 +97,10 @@ pub mod align {
     }
 }
 
+use synapse_rpc::resource::{Resource, SResourceUpdate};
+use unicode_segmentation::UnicodeSegmentation;
+use unicode_width::UnicodeWidthStr;
+
 // FIXME: Wide/Half chars, unicode-width only works for CJK iirc
 pub fn count_without_styling(l: &str) -> usize {
     let mut count = 0;
@@ -118,4 +119,13 @@ pub fn count_without_styling(l: &str) -> usize {
     }
 
     count
+}
+
+pub fn count(l: &str) -> usize {
+    l.graphemes(true).map(|g| g.width()).sum()
+}
+
+// Fuck strict coherence rules tbh
+fn apply_update(res: &mut Resource, upd: &SResourceUpdate) {
+    unimplemented!()
 }

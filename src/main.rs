@@ -16,7 +16,6 @@
 // along with Axon.  If not, see <http://www.gnu.org/licenses/>.
 
 extern crate crossbeam;
-extern crate itertools;
 extern crate libc;
 extern crate parking_lot;
 extern crate reqwest;

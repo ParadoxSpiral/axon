@@ -15,8 +15,9 @@
 
 pub mod widgets;
 
-use synapse_rpc::message::SMessage;
-use synapse_rpc::resource::{Torrent, Tracker};
+use synapse_rpc::criterion::{Criterion, Operation, Value};
+use synapse_rpc::message::{CMessage, SMessage};
+use synapse_rpc::resource::{Resource, ResourceKind, SResourceUpdate, Torrent, Tracker};
 use termion::{color, cursor};
 use termion::event::Key;
 use url::Url;
