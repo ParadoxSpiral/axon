@@ -181,12 +181,18 @@ pub struct Tabs {
 }
 impl Tabs {
     pub fn new(tabs: Vec<Box<Component>>, active: usize) -> Tabs {
-        assert!(tabs.len() > 1);
-        assert!(active < tabs.len());
+        assert!(active < tabs.len() || active == 0);
         Tabs {
             tabs: tabs,
             active_idx: active,
         }
+    }
+
+    pub fn push(&mut self, tab: Box<Component>) {
+        self.tabs.push(tab);
+    }
+    pub fn n_tabs(&self) -> usize {
+        self.tabs.len()
     }
 }
 
@@ -672,6 +678,10 @@ impl Input {
         Input {
             content: String::from(str),
             pos: pos.into()
+                .and_then(|pos| {
+                    assert!(pos > 0);
+                    Some(pos)
+                })
                 .unwrap_or_else(|| str.graphemes(true).count() + 1),
         }
     }
@@ -683,6 +693,10 @@ impl Input {
     }
     pub fn inner(&self) -> &str {
         &self.content
+    }
+    pub fn clear(&mut self) {
+        self.content.clear();
+        self.pos = 1;
     }
 
     pub fn cursor_left(&mut self) {
@@ -732,16 +746,26 @@ impl Input {
             // FIXME: allocs less than ideal
             format!(
                 "{}{}{}{}{}",
-                &self.content.graphemes(true).take(self.pos - 1).collect::<String>(),
+                &self.content
+                    .graphemes(true)
+                    .take(self.pos - 1)
+                    .collect::<String>(),
                 style::Underline,
                 if self.pos > 1 || !self.content.is_empty() {
-                    self.content.graphemes(true).skip(self.pos - 1).take(1).collect::<String>()
+                    self.content
+                        .graphemes(true)
+                        .skip(self.pos - 1)
+                        .take(1)
+                        .collect::<String>()
                 } else {
                     " ".into()
                 },
                 style::NoUnderline,
                 if self.pos + 1 <= len {
-                    self.content.graphemes(true).skip(self.pos).collect::<String>()
+                    self.content
+                        .graphemes(true)
+                        .skip(self.pos)
+                        .collect::<String>()
                 } else {
                     "".into()
                 }

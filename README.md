@@ -6,17 +6,21 @@ The synapse TUI client
 Note: Currently termion does not respect terminfo and uses e.g. ANSI color codes ([#106](https://github.com/ticki/termion/issues/106)).
 
 ## Hotkeys
-- `^d` closes axon
-- `h` switches pane focus left, `k` up, `l` right, `j` down
-- arrow keys generally switch items
+- `^d` disconnects from the current server, and closes axon when in the login panel
+- `h` may switch panel focus left, `k` up, `l` right, `j` down
+- `\n` may confirm an action, or disengage focus
+- `esc` may disengage focus
+- arrow keys switch items, `\t` may switch items
 
 Torrent panel:
-- `^i` will filter case insensitively, `^s` sensitively
-- `d` will open the selected torrents' details
-- `t` will open the tracker filter panel
+- `^s` circles filtering case (in)sensitivity
+- `^f` focuses the filter input
+- `esc` clears the filter
+- `d` opens the selected torrents' details
+- `t` opens the tracker filter panel, trackers are always filtered for insensitively
 
 Torrent details:
-- `q` will close the current details pane
+- `q` closes the current details pane
 
 # Windows
 Termion currently does not support windows, but might in the future ([#103](https://github.com/ticki/termion/issues/103)) (I really don't care about Windows, and dislike you for using it).
