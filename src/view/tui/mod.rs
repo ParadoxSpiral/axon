@@ -42,6 +42,7 @@ pub trait HandleInput {
 
 pub trait HandleRpc {
     fn rpc(&mut self, rpc: &RpcContext, msg: &SMessage);
+    fn init(&mut self, rpc: &RpcContext);
 }
 
 pub enum InputResult {
@@ -175,13 +176,15 @@ impl HandleInput for LoginPanel {
                 ));
                 InputResult::ReplaceWith(overlay as Box<Component>)
             } else {
-                let panel = Box::new(widgets::Tabs::new(
+                let mut panel = Box::new(widgets::Tabs::new(
                     vec![
                         Box::new(TorrentPanel::new()),
                         Box::new(StatisticsPanel::new()),
                     ],
                     0,
                 ));
+                // Init rpc subscribes etc
+                panel.init(ctx);
                 InputResult::ReplaceWith(panel as Box<Component>)
             },
             Key::Char(c) => {
@@ -625,9 +628,47 @@ impl Renderable for TorrentPanel {
 
 impl HandleRpc for TorrentPanel {
     fn rpc(&mut self, ctx: &RpcContext, msg: &SMessage) {
-        for d in &mut self.details {
-            d.rpc(ctx, msg);
+        match msg {
+            &SMessage::ResourcesRemoved { ref ids, .. } => {
+                self.torrents.retain(|t| !ids.iter().any(|i| t.id == *i));
+            }
+            &SMessage::UpdateResources { ref resources } => for r in resources {
+                match *r {
+                    SResourceUpdate::Resource(ref res) => if let Resource::Torrent(ref t) = **res {
+                        self.torrents.push(t.clone());
+                    } else if let Resource::Tracker(ref t) = **res {
+                        self.trackers.push(t.clone());
+                    },
+                    _ => {}
+                }
+            },
+            _ => {}
         }
+        self.details.rpc(ctx, msg);
+    }
+    fn init(&mut self, ctx: &RpcContext) {
+        ctx.send(CMessage::FilterSubscribe {
+            serial: ctx.next_serial(),
+            kind: ResourceKind::Torrent,
+            criteria: vec![
+                Criterion {
+                    field: "id".into(),
+                    op: Operation::Like,
+                    value: Value::S("".into()),
+                },
+            ],
+        });
+        ctx.send(CMessage::FilterSubscribe {
+            serial: ctx.next_serial(),
+            kind: ResourceKind::Tracker,
+            criteria: vec![
+                Criterion {
+                    field: "id".into(),
+                    op: Operation::Like,
+                    value: Value::S("".into()),
+                },
+            ],
+        });
     }
 }
 
@@ -664,6 +705,9 @@ impl HandleInput for TorrentDetailsPanel {
 
 impl HandleRpc for TorrentDetailsPanel {
     fn rpc(&mut self, ctx: &RpcContext, msg: &SMessage) {}
+    fn init(&mut self, _: &RpcContext) {
+        unreachable!()
+    }
 }
 
 pub struct StatisticsPanel {}
@@ -699,4 +743,7 @@ impl HandleInput for StatisticsPanel {
 
 impl HandleRpc for StatisticsPanel {
     fn rpc(&mut self, ctx: &RpcContext, msg: &SMessage) {}
+    fn init(&mut self, _: &RpcContext) {
+        // TODO: enumerate initial set + subscribe
+    }
 }

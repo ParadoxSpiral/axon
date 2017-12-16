@@ -20,7 +20,7 @@ use parking_lot::{Condvar, Mutex};
 use url::Url;
 use serde_json;
 use synapse_rpc;
-use synapse_rpc::message::CMessage;
+use synapse_rpc::message::{CMessage, SMessage};
 use websocket::ClientBuilder;
 use websocket::client::sync::Client;
 use websocket::message::OwnedMessage;
@@ -157,7 +157,22 @@ impl<'a, 'b> RpcContext<'a, 'b> {
                                     self.view.global_err(format!("{}", err.description()));
                                 } else {
                                     drop(ws);
-                                    self.view.handle_rpc(self, &s.unwrap());
+                                    let s = s.unwrap();
+                                    if let SMessage::ResourcesExtant { ref ids, .. } = s {
+                                        let ids: Vec<_> =
+                                            ids.iter().map(|s| s.clone().into_owned()).collect();
+
+                                        self.send(CMessage::Subscribe {
+                                            serial: self.next_serial(),
+                                            ids: ids.clone(),
+                                        });
+                                        self.send(CMessage::Unsubscribe {
+                                            serial: self.next_serial(),
+                                            ids: ids,
+                                        });
+                                    } else {
+                                        self.view.handle_rpc(self, &s);
+                                    }
                                     continue 'RUNNING;
                                 }
                             }

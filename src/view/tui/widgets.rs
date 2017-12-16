@@ -310,7 +310,14 @@ impl HandleInput for Tabs {
 
 impl HandleRpc for Tabs {
     fn rpc(&mut self, ctx: &RpcContext, msg: &SMessage) {
-        self.tabs.get_mut(self.active_idx).unwrap().rpc(ctx, msg);
+        if !self.tabs.is_empty() {
+            self.tabs.get_mut(self.active_idx).unwrap().rpc(ctx, msg);
+        }
+    }
+    fn init(&mut self, ctx: &RpcContext) {
+        for t in &mut self.tabs {
+            t.init(ctx);
+        }
     }
 }
 
@@ -480,6 +487,10 @@ where
     T: Component,
     C: Color,
 {
+    fn init(&mut self, ctx: &RpcContext) {
+        self.top.init(ctx);
+        self.below.init(ctx);
+    }
     fn rpc(&mut self, ctx: &RpcContext, msg: &SMessage) {
         self.top.rpc(ctx, msg);
         self.below.rpc(ctx, msg);
@@ -901,6 +912,9 @@ where
     fn rpc(&mut self, ctx: &RpcContext, msg: &SMessage) {
         self.content.rpc(ctx, msg);
     }
+    fn init(&mut self, ctx: &RpcContext) {
+        self.content.init(ctx);
+    }
 }
 
 pub struct IgnoreRpc<T>
@@ -936,6 +950,7 @@ where
     T: Renderable,
 {
     fn rpc(&mut self, _: &RpcContext, _: &SMessage) {}
+    fn init(&mut self, _: &RpcContext) {}
 }
 
 pub struct IgnoreRpcPassInput<T>
@@ -986,4 +1001,5 @@ where
     T: Renderable + HandleInput,
 {
     fn rpc(&mut self, _: &RpcContext, _: &SMessage) {}
+    fn init(&mut self, _: &RpcContext) {}
 }
