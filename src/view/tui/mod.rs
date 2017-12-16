@@ -388,7 +388,9 @@ impl HandleInput for TorrentPanel {
                     InputResult::Rerender
                 }
                 (RFocus::Torrents, true, _) => {
-                    self.rfocus = RFocus::Details;
+                    if self.details.n_tabs() != 0 {
+                        self.rfocus = RFocus::Details;
+                    }
                     InputResult::Rerender
                 }
                 (_, false, _) | (RFocus::Details, true, _) => InputResult::Key(Key::Char('j')),
