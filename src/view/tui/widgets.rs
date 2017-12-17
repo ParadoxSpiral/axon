@@ -50,10 +50,10 @@ where
     pub fn new(left: L, right: R, left_active: bool, left_size_factor: f32) -> VSplit<'a, L, R> {
         assert!(left_size_factor < 1. && left_size_factor > 0.);
         VSplit {
-            left: left,
-            right: right,
-            left_active: left_active,
-            left_size_factor: left_size_factor,
+            left,
+            right,
+            left_active,
+            left_size_factor,
             _marker: PhantomData,
         }
     }
@@ -124,10 +124,10 @@ where
 {
     pub fn new(top: T, bot: B, top_active: bool, top_size_factor: f32) -> HSplit<'a, T, B> {
         HSplit {
-            top: top,
-            bot: bot,
-            top_active: top_active,
-            top_size_factor: top_size_factor,
+            top,
+            bot,
+            top_active,
+             top_size_factor,
             _marker: PhantomData,
         }
     }
@@ -183,7 +183,7 @@ impl Tabs {
     pub fn new(tabs: Vec<Box<Component>>, active: usize) -> Tabs {
         assert!(active < tabs.len() || active == 0);
         Tabs {
-            tabs: tabs,
+            tabs,
             active_idx: active,
         }
     }
@@ -339,10 +339,10 @@ where
     ) -> BorrowedOverlay<'a, T, B, C> {
         assert!(top_dimensions.0 > 0 && top_dimensions.1 > 0);
         BorrowedOverlay {
-            top: top,
-            below: below,
-            top_dimensions: top_dimensions,
-            box_color: box_color,
+            top,
+            below,
+            top_dimensions,
+            box_color,
         }
     }
 }
@@ -441,9 +441,9 @@ where
     ) -> OwnedOverlay<T, C> {
         assert!(top_dimensions.0 > 0 && top_dimensions.1 > 0);
         OwnedOverlay {
-            top: top,
+            top,
             below: ManuallyDrop::new(below),
-            top_dimensions: top_dimensions,
+            top_dimensions,
             box_color: box_color.into(),
         }
     }

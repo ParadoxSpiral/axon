@@ -53,7 +53,7 @@ impl<'a, 'b> RpcContext<'a, 'b> {
             waiter: (Condvar::new(), Mutex::new(())),
             server_close: AtomicBool::new(false),
             serial: AtomicUsize::new(0),
-            view: view,
+            view,
         }
     }
 

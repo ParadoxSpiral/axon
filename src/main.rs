@@ -18,7 +18,6 @@
 extern crate crossbeam;
 extern crate libc;
 extern crate parking_lot;
-extern crate reqwest;
 extern crate serde;
 extern crate serde_json;
 extern crate synapse_rpc;
