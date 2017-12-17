@@ -177,10 +177,7 @@ impl HandleInput for LoginPanel {
                 InputResult::ReplaceWith(overlay as Box<Component>)
             } else {
                 let mut panel = Box::new(widgets::Tabs::new(
-                    vec![
-                        Box::new(TorrentPanel::new()),
-                        Box::new(StatisticsPanel::new()),
-                    ],
+                    vec![Box::new(MainPanel::new()), Box::new(StatisticsPanel::new())],
                     0,
                 ));
                 // Init rpc subscribes etc
@@ -217,37 +214,35 @@ enum Case {
     Insensitive,
 }
 
-struct TorrentPanel {
-    rfocus: RFocus,
+struct MainPanel {
     r_act: bool,
+    rfocus: RFocus,
     tfocus: Option<TFocus>,
-    torrents: Vec<Torrent>,
+    torrents: (usize, Vec<Torrent>),
     torrents_filter: (bool, Case, widgets::Input),
-    torrent_selected: usize,
     trackers: Vec<Tracker>,
     trackers_filter: (bool, Case, widgets::Input),
-    details: widgets::Tabs,
+    details: (usize, Vec<Torrent>),
 }
 
-impl TorrentPanel {
-    fn new() -> TorrentPanel {
-        TorrentPanel {
+impl MainPanel {
+    fn new() -> MainPanel {
+        MainPanel {
             rfocus: RFocus::Torrents,
             r_act: true,
             tfocus: None,
-            torrents: Vec::new(),
+            torrents: (0, Vec::new()),
             torrents_filter: (false, Case::Insensitive, widgets::Input::from("", 1)),
-            torrent_selected: 0,
             trackers: Vec::new(),
             trackers_filter: (false, Case::Insensitive, widgets::Input::from("", 1)),
-            details: widgets::Tabs::new(Vec::new(), 0),
+            details: (0, Vec::new()),
         }
     }
 }
 
-impl Component for TorrentPanel {}
+impl Component for MainPanel {}
 
-impl HandleInput for TorrentPanel {
+impl HandleInput for MainPanel {
     fn input(&mut self, ctx: &RpcContext, k: Key) -> InputResult {
         match k {
             Key::Char('t') => {
@@ -270,10 +265,19 @@ impl HandleInput for TorrentPanel {
                 InputResult::Rerender
             }
             Key::Char('d') => match (self.rfocus, self.r_act, self.tfocus) {
-                (RFocus::Torrents, true, _) => if !self.torrents.is_empty() {
-                    self.details.push(Box::new(TorrentDetailsPanel::new(
-                        self.torrents[self.torrent_selected].clone(),
-                    )));
+                (RFocus::Torrents, true, _) => if !self.torrents.1.is_empty() {
+                    if let Some(pos) = self.details
+                        .1
+                        .iter()
+                        .position(|dt| dt.id == self.torrents.1[self.torrents.0].id)
+                    {
+                        self.details.0 = pos;
+                    } else {
+                        self.details
+                            .1
+                            .push(self.torrents.1[self.torrents.0].clone());
+                        self.details.0 = self.details.1.len() - 1;
+                    }
                     InputResult::Rerender
                 } else {
                     InputResult::Key(Key::Char('d'))
@@ -286,8 +290,29 @@ impl HandleInput for TorrentPanel {
                     self.trackers_filter.2.push('d');
                     InputResult::Rerender
                 }
-                (RFocus::Details, true, _) => self.details.input(ctx, k),
                 _ => InputResult::Key(Key::Char('d')),
+            },
+            Key::Char('q') => match (self.rfocus, self.r_act, self.tfocus) {
+                (RFocus::Details, true, _) => {
+                    // This is ok, because details only focused when not empty
+                    self.details.1.remove(self.details.0);
+                    if self.details.0 > 0 {
+                        self.details.0 -= 1;
+                    }
+                    if self.details.1.is_empty() {
+                        self.rfocus = RFocus::Torrents;
+                    }
+                    InputResult::Rerender
+                }
+                (RFocus::TorrentsFilter, true, _) => {
+                    self.torrents_filter.2.push('q');
+                    InputResult::Rerender
+                }
+                (_, false, Some(TFocus::TrackersFilter)) => {
+                    self.trackers_filter.2.push('q');
+                    InputResult::Rerender
+                }
+                _ => InputResult::Key(Key::Char('q')),
             },
             Key::Ctrl('s') => match (self.rfocus, self.r_act, self.tfocus) {
                 (RFocus::TorrentsFilter, true, _) | (RFocus::Torrents, true, _) => {
@@ -306,7 +331,6 @@ impl HandleInput for TorrentPanel {
                     }
                     InputResult::Rerender
                 }
-                (RFocus::Details, true, _) => self.details.input(ctx, k),
                 _ => InputResult::Key(Key::Ctrl('s')),
             },
             Key::Esc => match (self.rfocus, self.r_act, self.tfocus) {
@@ -353,12 +377,20 @@ impl HandleInput for TorrentPanel {
                     self.torrents_filter.2.push('h');
                     InputResult::Rerender
                 }
-                (_, true, Some(_)) => {
-                    self.r_act = false;
-                    InputResult::Rerender
+                (RFocus::Details, true, _) => {
+                    if self.details.0 > 0 {
+                        self.details.0 -= 1;
+                        InputResult::Rerender
+                    } else {
+                        InputResult::Key(Key::Char('h'))
+                    }
                 }
                 (_, false, Some(TFocus::TrackersFilter)) => {
                     self.trackers_filter.2.push('h');
+                    InputResult::Rerender
+                }
+                (_, true, Some(_)) => {
+                    self.r_act = false;
                     InputResult::Rerender
                 }
                 (_, _, None) | (_, false, _) => InputResult::Key(Key::Char('h')),
@@ -368,12 +400,20 @@ impl HandleInput for TorrentPanel {
                     self.trackers_filter.2.push('l');
                     InputResult::Rerender
                 }
-                (_, false, _) => {
-                    self.r_act = true;
-                    InputResult::Rerender
+                (RFocus::Details, true, _) => {
+                    if self.details.0 < self.details.1.len() - 1 {
+                        self.details.0 += 1;
+                        InputResult::Rerender
+                    } else {
+                        InputResult::Key(Key::Char('l'))
+                    }
                 }
                 (RFocus::TorrentsFilter, true, _) => {
                     self.torrents_filter.2.push('l');
+                    InputResult::Rerender
+                }
+                (_, false, _) => {
+                    self.r_act = true;
                     InputResult::Rerender
                 }
                 (_, true, _) => InputResult::Key(Key::Char('l')),
@@ -388,7 +428,7 @@ impl HandleInput for TorrentPanel {
                     InputResult::Rerender
                 }
                 (RFocus::Torrents, true, _) => {
-                    if self.details.n_tabs() != 0 {
+                    if !self.details.1.is_empty() {
                         self.rfocus = RFocus::Details;
                     }
                     InputResult::Rerender
@@ -411,8 +451,8 @@ impl HandleInput for TorrentPanel {
                 (_, false, _) | (_, true, _) => InputResult::Key(Key::Char('k')),
             },
             Key::Up => match (self.rfocus, self.r_act, self.tfocus) {
-                (RFocus::Torrents, true, _) => if self.torrent_selected > 0 {
-                    self.torrent_selected -= 1;
+                (RFocus::Torrents, true, _) => if self.torrents.0 > 0 {
+                    self.torrents.0 -= 1;
                     InputResult::Rerender
                 } else {
                     InputResult::Key(Key::Up)
@@ -420,8 +460,8 @@ impl HandleInput for TorrentPanel {
                 _ => InputResult::Key(Key::Up),
             },
             Key::Down => match (self.rfocus, self.r_act, self.tfocus) {
-                (RFocus::Torrents, true, _) => if self.torrent_selected + 1 < self.torrents.len() {
-                    self.torrent_selected += 1;
+                (RFocus::Torrents, true, _) => if self.torrents.0 + 1 < self.torrents.1.len() {
+                    self.torrents.0 += 1;
                     InputResult::Rerender
                 } else {
                     InputResult::Key(Key::Down)
@@ -481,7 +521,6 @@ impl HandleInput for TorrentPanel {
                     self.trackers_filter.2.push(k);
                     InputResult::Rerender
                 }
-                (RFocus::Details, true, _) => self.details.input(ctx, Key::Char(k)),
                 _ => InputResult::Key(Key::Char(k)),
             },
             ret => InputResult::Key(ret),
@@ -489,7 +528,7 @@ impl HandleInput for TorrentPanel {
     }
 }
 
-impl Renderable for TorrentPanel {
+impl Renderable for MainPanel {
     fn name(&self) -> String {
         "torrents".into()
     }
@@ -500,9 +539,8 @@ impl Renderable for TorrentPanel {
             } else {
                 height
             };
-            for (i, t) in self.torrents.iter().take(ceil as _).enumerate() {
-                // TODO: Colour torrents of errored trackers red, selected with red BG
-                if self.torrent_selected == i {
+            for (i, t) in self.torrents.1.iter().take(ceil as _).enumerate() {
+                if self.torrents.0 == i {
                     let (c_s, c_e) = match (self.rfocus, self.r_act) {
                         (RFocus::Torrents, true) => (
                             format!("{}", color::Fg(color::Cyan)),
@@ -588,8 +626,22 @@ impl Renderable for TorrentPanel {
                 )).render(target, width, 1, x, height + 1);
             }
         };
+        let draw_details = |target: &mut _, width, height, x, y| {
+            let ts = self.details
+                .1
+                .iter()
+                .map(|d| {
+                    Box::new(widgets::CloseOnInput::new(widgets::IgnoreRpc::new(
+                        // FIXME: Figure out how to avoid the clone, but it might very well not be
+                        // possible or even really needed
+                        TorrentDetailsPanel::new(d.clone()),
+                    ))) as Box<Component>
+                })
+                .collect::<Vec<_>>();
+            widgets::Tabs::new(ts, self.details.0).render(target, width, height, x, y);
+        };
 
-        match (self.tfocus, self.details.n_tabs() == 0) {
+        match (self.tfocus, self.details.1.is_empty()) {
             (None, true) => {
                 draw_torrents(target, width, height, x_off, y_off);
             }
@@ -602,51 +654,93 @@ impl Renderable for TorrentPanel {
                 ).render(target, width, height, x_off, y_off);
             }
             (None, false) => {
-                unimplemented!(); /*
-                widgets::BorrowedHSplit::new(
-                    &mut widgets::RenderFn::new(draw_torrents),
-                    &mut self.details,
+                widgets::HSplit::new(
+                    &mut widgets::RenderFn::new(draw_torrents) as &mut Renderable,
+                    &mut widgets::RenderFn::new(draw_details) as &mut Renderable,
                     !(self.rfocus == RFocus::Details),
                     0.65,
-                ).render(target, width, height, x_off, y_off);*/
+                ).render(target, width, height, x_off, y_off);
             }
             (Some(_), false) => {
-                unimplemented!(); /*
-                widgets::BorrowedVSplit::new(
-                    &mut widgets::RenderFn::new(draw_trackers),
-                    &mut widgets::BorrowedHSplit::new(
-                        &mut widgets::IgnoreAll::new(&mut widgets::RenderFn::new(draw_torrents)),
-                        &mut self.details,
+                widgets::VSplit::new(
+                    &mut widgets::RenderFn::new(draw_trackers) as &mut Renderable,
+                    &mut widgets::HSplit::new(
+                        &mut widgets::RenderFn::new(draw_torrents) as &mut Renderable,
+                        &mut widgets::RenderFn::new(draw_details) as &mut Renderable,
                         !(self.rfocus == RFocus::Details),
                         0.65,
-                    ),
+                    ) as &mut Renderable,
                     !self.r_act,
                     0.2,
-                ).render(target, width, height, x_off, y_off);*/
+                ).render(target, width, height, x_off, y_off);
             }
         }
     }
 }
 
-impl HandleRpc for TorrentPanel {
+impl HandleRpc for MainPanel {
     fn rpc(&mut self, ctx: &RpcContext, msg: &SMessage) {
         match msg {
             &SMessage::ResourcesRemoved { ref ids, .. } => {
-                self.torrents.retain(|t| !ids.iter().any(|i| t.id == *i));
+                // FIXME: This shittiness can go once closure disjoint field borrows land
+                let mut i = 0;
+                let mut dec = false;
+                let idx = self.torrents.0;
+                self.details.1.retain(|t| {
+                    i += 1;
+                    if ids.iter().any(|i| t.id == *i) {
+                        if i - 1 == idx && i != 1 {
+                            dec = true;
+                        }
+                        false
+                    } else {
+                        true
+                    }
+                });
+                if dec {
+                    self.torrents.0 -= 1;
+                }
+
+                i = 0;
+                dec = false;
+                let idx = self.details.0;
+                self.details.1.retain(|t| {
+                    i += 1;
+                    if ids.iter().any(|i| t.id == *i) {
+                        if i - 1 == idx && i != 1 {
+                            dec = true;
+                        }
+                        false
+                    } else {
+                        true
+                    }
+                });
+                if dec {
+                    self.details.0 -= 1;
+                }
             }
             &SMessage::UpdateResources { ref resources } => for r in resources {
                 match *r {
                     SResourceUpdate::Resource(ref res) => if let Resource::Torrent(ref t) = **res {
-                        self.torrents.push(t.clone());
+                        self.torrents.1.push(t.clone());
                     } else if let Resource::Tracker(ref t) = **res {
                         self.trackers.push(t.clone());
                     },
-                    _ => {}
+                    ref upd => {
+                        for t in &mut self.torrents.1 {
+                            ::utils::update_torrent(t, upd);
+                        }
+                        for t in &mut self.details.1 {
+                            ::utils::update_torrent(t, upd);
+                        }
+                        for t in &mut self.trackers {
+                            ::utils::update_tracker(t, upd);
+                        }
+                    }
                 }
             },
             _ => {}
         }
-        self.details.rpc(ctx, msg);
     }
     fn init(&mut self, ctx: &RpcContext) {
         ctx.send(CMessage::FilterSubscribe {
@@ -677,43 +771,29 @@ impl HandleRpc for TorrentPanel {
 pub struct TorrentDetailsPanel {
     torr: Torrent,
 }
-
 impl TorrentDetailsPanel {
-    pub fn new(torr: Torrent) -> TorrentDetailsPanel {
-        TorrentDetailsPanel { torr: torr }
+    fn new(torr: Torrent) -> TorrentDetailsPanel {
+        TorrentDetailsPanel { torr }
     }
 }
-
-impl Component for TorrentDetailsPanel {}
 
 impl Renderable for TorrentDetailsPanel {
     fn name(&self) -> String {
-        "torrent details".into()
+        self.torr
+            .name
+            .as_ref()
+            .unwrap_or_else(|| &self.torr.path)
+            .clone()
     }
     fn render(&mut self, target: &mut Vec<u8>, width: u16, height: u16, x_off: u16, y_off: u16) {
-        widgets::Text::<_, align::x::Center, align::y::Center>::new("torrent details panel")
-            .render(target, width, height, x_off, y_off + height / 2);
-    }
-}
-
-impl HandleInput for TorrentDetailsPanel {
-    fn input(&mut self, ctx: &RpcContext, k: Key) -> InputResult {
-        match k {
-            Key::Char('q') => InputResult::Close,
-            _ => InputResult::Key(k),
-        }
-    }
-}
-
-impl HandleRpc for TorrentDetailsPanel {
-    fn rpc(&mut self, ctx: &RpcContext, msg: &SMessage) {}
-    fn init(&mut self, _: &RpcContext) {
-        unreachable!()
+        widgets::Text::<_, align::x::Center, align::y::Center>::new(format!(
+            "details of: {}",
+            self.name()
+        )).render(target, width, height, x_off, y_off);
     }
 }
 
 pub struct StatisticsPanel {}
-
 impl StatisticsPanel {
     fn new() -> StatisticsPanel {
         StatisticsPanel {}

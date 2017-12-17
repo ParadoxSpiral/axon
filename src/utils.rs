@@ -97,7 +97,7 @@ pub mod align {
     }
 }
 
-use synapse_rpc::resource::{Resource, SResourceUpdate};
+use synapse_rpc::resource::{SResourceUpdate, Torrent, Tracker};
 use unicode_segmentation::UnicodeSegmentation;
 use unicode_width::UnicodeWidthStr;
 
@@ -125,7 +125,9 @@ pub fn count(l: &str) -> usize {
     l.graphemes(true).map(|g| g.width()).sum()
 }
 
-// Fuck strict coherence rules tbh
-fn apply_update(res: &mut Resource, upd: &SResourceUpdate) {
+pub fn update_torrent(t: &mut Torrent, upd: &SResourceUpdate) {
+    unimplemented!()
+}
+pub fn update_tracker(t: &mut Tracker, upd: &SResourceUpdate) {
     unimplemented!()
 }

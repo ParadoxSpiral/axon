@@ -187,13 +187,6 @@ impl Tabs {
             active_idx: active,
         }
     }
-
-    pub fn push(&mut self, tab: Box<Component>) {
-        self.tabs.push(tab);
-    }
-    pub fn n_tabs(&self) -> usize {
-        self.tabs.len()
-    }
 }
 
 impl Component for Tabs {}
@@ -215,25 +208,24 @@ impl Renderable for Tabs {
     }
     fn render(&mut self, target: &mut Vec<u8>, width: u16, height: u16, x_off: u16, y_off: u16) {
         // Draw header
-        let len = self.tabs.len() as u16;
-        let n_tabs = self.tabs.len();
+        let n_tabs = self.tabs.len() as u16;
         for (i, t) in self.tabs.iter().enumerate() {
             let name = t.name();
             let name_l = utils::count_without_styling(&name) as u16;
-            let mut x_off = x_off + i as u16 * (width / len);
+            let mut x_off = x_off + i as u16 * (width / n_tabs);
             let mut compensate = false;
-            let sep = if width / len < name_l {
+            let sep = if width / n_tabs < name_l {
                 "".into()
             } else {
                 // Compensate if width is uneven
-                if i + 1 == n_tabs && (f32::from(width) / f32::from(len)) % 2. != 0. {
+                if i + 1 == n_tabs as usize && (f32::from(width) / f32::from(n_tabs)) % 2. != 0. {
                     compensate = true;
                     // Overwrite last elem of previous sep, or there will be a gap
                     if x_off != 1 {
                         x_off -= 1;
                     }
                 }
-                (0..(width / len - name_l) / 2).fold("".to_owned(), |acc, _| acc + "─")
+                (0..(width / n_tabs - name_l) / 2).fold("".to_owned(), |acc, _| acc + "─")
             };
             let sep_l = utils::count_without_styling(&sep) as u16;
 
@@ -243,7 +235,7 @@ impl Renderable for Tabs {
             }
             Text::<_, align::x::Left, align::y::Top>::new(name).render(
                 target,
-                width / len - sep_l,
+                width / n_tabs - sep_l,
                 1,
                 x_off + sep_l,
                 y_off,
@@ -889,7 +881,7 @@ where
     T: Renderable + HandleRpc,
 {
     fn name(&self) -> String {
-        format!("close on input: {}", self.content.name())
+        self.content.name()
     }
     fn render(&mut self, target: &mut Vec<u8>, width: u16, height: u16, x_off: u16, y_off: u16) {
         self.content.render(target, width, height, x_off, y_off);
