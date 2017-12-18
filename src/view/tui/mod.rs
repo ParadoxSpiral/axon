@@ -694,7 +694,7 @@ impl HandleRpc for MainPanel {
                 let mut i = 0;
                 let mut dec = false;
                 let idx = self.torrents.0;
-                self.details.1.retain(|t| {
+                self.torrents.1.retain(|t| {
                     i += 1;
                     if ids.iter().any(|i| t.id == *i) {
                         if i - 1 == idx && i != 1 {
@@ -726,6 +726,16 @@ impl HandleRpc for MainPanel {
                 if dec {
                     self.details.0 -= 1;
                 }
+
+                i = 0;
+                self.trackers.retain(|t| {
+                    i += 1;
+                    if ids.iter().any(|i| t.id == *i) {
+                        false
+                    } else {
+                        true
+                    }
+                });
             }
             &SMessage::UpdateResources { ref resources } => for r in resources {
                 match *r {
