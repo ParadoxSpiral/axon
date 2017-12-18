@@ -5,10 +5,10 @@ The synapse TUI client
 # Usage
 Note: Currently termion does not respect terminfo and uses e.g. ANSI color codes ([#106](https://github.com/ticki/termion/issues/106)).
 
-## Hotkeys
+## Keybindings
 - `^d` disconnects from the current server, and closes axon when in the login panel
 - `h` may switch panel focus left, `k` up, `l` right, `j` down
-- `\n` may confirm an action, or disengage focus
+- `\n` may confirm an action, or engage focus
 - `esc` may disengage focus
 - arrow keys switch items, `\t` may switch items
 

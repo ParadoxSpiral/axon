@@ -348,12 +348,20 @@ impl HandleInput for MainPanel {
                 }
                 _ => InputResult::Key(Key::Esc),
             },
-            Key::Char('\n') => match (self.rfocus, self.r_act, self.tfocus) {
-                (RFocus::TorrentsFilter, true, _) => {
+            Key::Char('\n') => match (self.rfocus, self.r_act, self.tfocus, self.torrents_filter.0, self.trackers_filter.0) {
+                (RFocus::Torrents, true, _, true, _) => {
+                    self.rfocus = RFocus::TorrentsFilter;
+                    InputResult::Rerender
+                }
+                (RFocus::TorrentsFilter, true, _, true, _) => {
                     self.rfocus = RFocus::Torrents;
                     InputResult::Rerender
                 }
-                (_, false, Some(TFocus::TrackersFilter)) => {
+                (_, false, Some(TFocus::Trackers), _, true) => {
+                    self.tfocus = Some(TFocus::TrackersFilter);
+                    InputResult::Rerender
+                }
+                (_, false, Some(TFocus::TrackersFilter), _, true) => {
                     self.tfocus = Some(TFocus::Trackers);
                     InputResult::Rerender
                 }

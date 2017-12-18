@@ -128,6 +128,7 @@ pub fn count(l: &str) -> usize {
 pub fn update_torrent(t: &mut Torrent, upd: &SResourceUpdate) {
     unimplemented!()
 }
+
 pub fn update_tracker(t: &mut Tracker, upd: &SResourceUpdate) {
     unimplemented!()
 }
