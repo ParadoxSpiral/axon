@@ -15,7 +15,6 @@
 
 pub mod widgets;
 
-use synapse_rpc::criterion::{Criterion, Operation, Value};
 use synapse_rpc::message::{CMessage, SMessage};
 use synapse_rpc::resource::{Resource, ResourceKind, SResourceUpdate, Torrent, Tracker};
 use termion::{color, cursor};
@@ -764,24 +763,14 @@ impl HandleRpc for MainPanel {
         ctx.send(CMessage::FilterSubscribe {
             serial: ctx.next_serial(),
             kind: ResourceKind::Torrent,
-            criteria: vec![
-                Criterion {
-                    field: "id".into(),
-                    op: Operation::Like,
-                    value: Value::S("".into()),
-                },
-            ],
+            criteria: Vec::new()
+            ,
         });
         ctx.send(CMessage::FilterSubscribe {
             serial: ctx.next_serial(),
             kind: ResourceKind::Tracker,
-            criteria: vec![
-                Criterion {
-                    field: "id".into(),
-                    op: Operation::Like,
-                    value: Value::S("".into()),
-                },
-            ],
+            criteria: Vec::new()
+            ,
         });
     }
 }
