@@ -3,7 +3,7 @@ The synapse TUI client
 
 
 # Usage
-Note: Currently termion does not respect terminfo and uses e.g. ANSI color codes ([#106](https://github.com/ticki/termion/issues/106)).
+Note: Currently termion does not respect terminfo and uses ANSI color codes ([#106](https://github.com/ticki/termion/issues/106)).
 
 ## Keybindings
 - `^d` disconnects from the current server, and closes axon when in the login panel

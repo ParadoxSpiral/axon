@@ -97,7 +97,8 @@ pub mod align {
     }
 }
 
-use synapse_rpc::resource::{SResourceUpdate, Torrent, Tracker};
+use regex::{self, Regex};
+use synapse_rpc::resource::Torrent;
 use unicode_segmentation::UnicodeSegmentation;
 use unicode_width::UnicodeWidthStr;
 
@@ -123,12 +124,4 @@ pub fn count_without_styling(l: &str) -> usize {
 
 pub fn count(l: &str) -> usize {
     l.graphemes(true).map(|g| g.width()).sum()
-}
-
-pub fn update_torrent(t: &mut Torrent, upd: &SResourceUpdate) {
-    unimplemented!()
-}
-
-pub fn update_tracker(t: &mut Tracker, upd: &SResourceUpdate) {
-    unimplemented!()
 }

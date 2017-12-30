@@ -745,13 +745,13 @@ impl HandleRpc for MainPanel {
                     },
                     ref upd => {
                         for t in &mut self.torrents.1 {
-                            ::utils::update_torrent(t, upd);
+                            t.update(r);
                         }
                         for t in &mut self.details.1 {
-                            ::utils::update_torrent(t, upd);
+                            t.update(r);
                         }
                         for t in &mut self.trackers {
-                            ::utils::update_tracker(t, upd);
+                            t.update(r);
                         }
                     }
                 }
@@ -763,14 +763,12 @@ impl HandleRpc for MainPanel {
         ctx.send(CMessage::FilterSubscribe {
             serial: ctx.next_serial(),
             kind: ResourceKind::Torrent,
-            criteria: Vec::new()
-            ,
+            criteria: Vec::new(),
         });
         ctx.send(CMessage::FilterSubscribe {
             serial: ctx.next_serial(),
             kind: ResourceKind::Tracker,
-            criteria: Vec::new()
-            ,
+            criteria: Vec::new(),
         });
     }
 }

@@ -181,7 +181,6 @@ pub struct Tabs {
 }
 impl Tabs {
     pub fn new(tabs: Vec<Box<Component>>, active: usize) -> Tabs {
-        assert!(active < tabs.len() || active == 0);
         Tabs {
             tabs,
             active_idx: active,
