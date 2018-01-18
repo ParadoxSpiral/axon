@@ -103,11 +103,11 @@ impl View {
 
     pub fn render_until_death(&self) {
         while ::RUNNING.load(Ordering::Acquire) {
-            // Update either every 3s or when input demands it
+            // Update either every 5s or when input demands it
             self.render();
             self.waiter
                 .0
-                .wait_for(&mut self.waiter.1.lock(), Duration::from_secs(3));
+                .wait_for(&mut self.waiter.1.lock(), Duration::from_secs(5));
         }
     }
 
