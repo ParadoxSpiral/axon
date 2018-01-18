@@ -15,58 +15,92 @@
 // You should have received a copy of the GNU General Public License
 // along with Axon.  If not, see <http://www.gnu.org/licenses/>.
 
-use libc;
-use parking_lot::{Condvar, Mutex};
-use url::Url;
+use futures::{Future, Sink, Stream as FutStream};
+use futures::future::{self, Either};
+use futures::sink::Wait;
+use futures::stream::{SplitSink, SplitStream};
+use futures::sync::mpsc::{self, Receiver, Sender};
+use parking_lot::Mutex;
 use serde_json;
 use synapse_rpc;
 use synapse_rpc::message::{CMessage, SMessage};
+use tokio::reactor::{Core, Timeout};
+use url::Url;
 use websocket::ClientBuilder;
-use websocket::client::sync::Client;
+use websocket::async::{MessageCodec, Stream};
+use websocket::async::client::Framed;
 use websocket::message::OwnedMessage;
-use websocket::result::WebSocketError;
-use websocket::stream::sync::NetworkStream;
 
 use std::cell::RefCell;
 use std::error::Error;
-use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
 
 use view::View;
 
-pub struct RpcContext<'a, 'b: 'a> {
-    socket: RefCell<Option<Mutex<Client<Box<NetworkStream + Send>>>>>,
-    waiter: (Condvar, Mutex<()>),
-    server_close: AtomicBool,
-    // FIXME: Once feature `integer atomics` lands, switch to AtomicU64
-    serial: AtomicUsize,
-    view: &'a View<'b>,
+type InnerStream = Framed<Box<Stream + Send>, MessageCodec<OwnedMessage>>;
+type SplitSocket = (
+    RefCell<SplitStream<InnerStream>>,
+    Mutex<Wait<SplitSink<InnerStream>>>,
+);
+
+enum StreamRes {
+    Close,
+    Msg(OwnedMessage),
 }
 
-unsafe impl<'a, 'b> Send for RpcContext<'a, 'b> {}
-unsafe impl<'a, 'b> Sync for RpcContext<'a, 'b> {}
+pub struct RpcContext<'v> {
+    socket: RefCell<Option<SplitSocket>>,
+    waiter: (RefCell<Sender<()>>, RefCell<Receiver<()>>),
+    // FIXME: Once feature `integer atomics` lands, switch to AtomicU64
+    serial: AtomicUsize,
+    core: RefCell<Core>,
+    view: &'v View,
+}
 
-impl<'a, 'b> RpcContext<'a, 'b> {
-    pub fn new(view: &'a View<'b>) -> RpcContext<'a, 'b> {
+unsafe impl<'v> Send for RpcContext<'v> {}
+unsafe impl<'v> Sync for RpcContext<'v> {}
+
+impl<'v> RpcContext<'v> {
+    pub fn new(view: &'v View) -> RpcContext<'v> {
         RpcContext {
             socket: RefCell::new(None),
-            waiter: (Condvar::new(), Mutex::new(())),
-            server_close: AtomicBool::new(false),
+            waiter: {
+                let (s, r) = mpsc::channel(1);
+                (RefCell::new(s), RefCell::new(r))
+            },
             serial: AtomicUsize::new(0),
+            core: RefCell::new(Core::new().unwrap()),
             view,
         }
     }
 
     pub fn init(&self, mut srv: Url, pass: &str) -> Result<(), String> {
         let url = srv.query_pairs_mut().append_pair("password", pass).finish();
-        // FIXME: can't specify timeout -> connect to ws://1.1.1.1 -> 2.5m wait time until timeout
-        let mut client = ClientBuilder::new(url.as_str())
-            .map_err(|err| format!("{}", err))?
-            .connect(None)
-            .map_err(|err| format!("{:?}", err))?;
+        let (sink, mut stream) = {
+            let mut core = self.core.borrow_mut();
+            let timeout = Timeout::new(Duration::from_secs(10), &core.handle()).unwrap();
+            let fut = ClientBuilder::new(url.as_str())
+                .map_err(|err| format!("{}", err))?
+                .async_connect(None, &core.handle())
+                .map_err(|err| format!("{:?}", err))
+                .select2(timeout.map(|_| "Timeout while connecting to server (10s)".to_owned()));
+            match core.run(fut) {
+                Ok(Either::A(((client, _), _))) => client.split(),
+                Ok(Either::B((err, _))) | Err(Either::A((err, _))) => {
+                    return Err(err);
+                }
+                _ => unreachable!(),
+            }
+        };
 
-        let msg = client.recv_message();
-        if let Ok(OwnedMessage::Text(msg)) = msg {
+        if let OwnedMessage::Text(msg) = stream
+            .by_ref()
+            .wait()
+            .next()
+            .unwrap()
+            .map_err(|err| format!("{:?}", err))?
+        {
             let srv_ver = serde_json::from_str::<synapse_rpc::message::Version>(&msg)
                 .map_err(|err| format!("{:?}", err))?;
             if srv_ver.major != synapse_rpc::MAJOR_VERSION {
@@ -78,17 +112,16 @@ impl<'a, 'b> RpcContext<'a, 'b> {
                 ));
             }
         } else {
-            return Err(format!("Expected server version, got {:?}", msg));
+            return Err("Server sent non-text response, i.e. not its version".to_owned());
         }
 
-        (**client.stream_ref())
-            .as_tcp()
-            .set_nonblocking(true)
-            .map_err(|err| format!("{:?}", err))?;
-
-        *self.socket.borrow_mut() = Some(Mutex::new(client));
-        self.waiter.0.notify_one();
+        *self.socket.borrow_mut() = Some((RefCell::new(stream), Mutex::new(sink.wait())));
+        self.wake();
         Ok(())
+    }
+
+    pub fn wake(&self) {
+        self.waiter.0.borrow_mut().try_send(()).unwrap();
     }
 
     pub fn next_serial(&self) -> u64 {
@@ -96,110 +129,95 @@ impl<'a, 'b> RpcContext<'a, 'b> {
     }
 
     pub fn send(&self, msg: CMessage) {
-        let ws = self.socket.borrow();
-        let ws = ws.as_ref().unwrap();
-        let _ = serde_json::to_string(&msg)
-            .map_err(|err| self.view.global_err(format!("{}", err.description())))
-            .map(|msg| {
-                if let Err(err) = ws.lock().send_message(&OwnedMessage::Text(msg)) {
-                    self.view.global_err(format!("{}", err.description()));
-                };
-            });
+        match serde_json::to_string(&msg) {
+            Err(e) => self.view.global_err(format!("{}", e.description())),
+            Ok(msg) => self.send_raw(OwnedMessage::Text(msg)),
+        }
     }
 
-    pub fn wake(&self) {
-        self.waiter.0.notify_one();
+    fn send_raw(&self, msg: OwnedMessage) {
+        let sink = self.socket.borrow();
+        let sink = sink.as_ref();
+        let mut sink = sink.unwrap().1.lock();
+
+        match (sink.send(msg), sink.flush()) {
+            (Err(e), _) | (_, Err(e)) => self.view.global_err(format!("{:?}", e)),
+            _ => {}
+        }
     }
 
-    pub fn server_close(&self) {
-        self.server_close.store(true, Ordering::Release);
-        let socket = self.socket.borrow();
-        let mut socket = socket.as_ref().unwrap().lock();
-        let _ = socket.send_message(&OwnedMessage::Close(None));
-    }
-
-    pub fn recv_until_death(&self, running: &AtomicBool) {
+    pub fn recv_until_death(&self) {
         // Each iteration represents the lifetime of a connection to a server
-        'SERVER_LIFE: loop {
-            self.waiter.0.wait(&mut self.waiter.1.lock());
-            // FIXME: This scope is needed because >tfw no NLL ← can't nicely drop socket
-            {
-                // Check if exited before login
-                let socket = self.socket.borrow();
-                if socket.is_none() {
-                    return;
-                }
-                let socket = socket.as_ref().unwrap();
-                'RUNNING: while running.load(Ordering::Acquire) {
-                    let mut ws = socket.lock();
-                    loop {
-                        if self.server_close
-                            .compare_and_swap(true, false, Ordering::AcqRel)
-                        {
-                            continue 'SERVER_LIFE;
-                        }
-                        match ws.recv_message() {
-                            Ok(OwnedMessage::Ping(p)) => {
-                                if let Err(err) = ws.send_message(&OwnedMessage::Pong(p)) {
-                                    self.view.global_err(format!("{}", err.description()));
-                                };
-                            }
-                            Ok(OwnedMessage::Close(data)) => {
-                                self.view.server_close(data);
-                                continue 'SERVER_LIFE;
-                            }
-                            Ok(OwnedMessage::Text(s)) => {
-                                let s: Result<
-                                    ::synapse_rpc::message::SMessage,
-                                    _,
-                                > = serde_json::from_str(&s);
-                                if let Err(err) = s {
-                                    self.view.global_err(format!("{}", err.description()));
-                                } else {
-                                    drop(ws);
-                                    let s = s.unwrap();
-                                    if let SMessage::ResourcesExtant { ref ids, .. } = s {
-                                        let ids: Vec<_> =
-                                            ids.iter().map(|s| s.clone().into_owned()).collect();
+        loop {
+            // Wait for initialization
+            let mut waiter = self.waiter.1.borrow_mut();
+            let _ = waiter.by_ref().wait().next().unwrap();
 
-                                        self.send(CMessage::Subscribe {
-                                            serial: self.next_serial(),
-                                            ids: ids.clone(),
-                                        });
-                                        self.send(CMessage::Unsubscribe {
-                                            serial: self.next_serial(),
-                                            ids: ids,
-                                        });
-                                    } else {
-                                        self.view.handle_rpc(self, &s);
-                                    }
-                                    continue 'RUNNING;
-                                }
-                            }
-                            Err(WebSocketError::NoDataAvailable) => {
-                                break;
-                            }
-                            // wtf, so much for NoDataAvailable
-                            Err(WebSocketError::IoError(ref err))
-                                if err.raw_os_error() == Some(libc::EAGAIN) =>
-                            {
-                                break;
-                            }
-                            err => {
-                                self.view.global_err(format!("{:?}", err));
-                            }
-                        }
-                    }
-                    drop(ws);
-                    self.waiter
-                        .0
-                        .wait_for(&mut self.waiter.1.lock(), Duration::from_millis(2500));
-                }
+            // Check if exited before login
+            let socket = self.socket.borrow();
+            if socket.is_none() {
+                return;
             }
-            if !running.load(Ordering::Acquire) {
-                break 'SERVER_LIFE;
-            } else {
+
+            let mut core = self.core.borrow_mut();
+            let socket = socket.as_ref().unwrap();
+            let mut stream = socket.0.borrow_mut();
+
+            let msg_handler = stream
+                .by_ref()
+                .map(|msg| StreamRes::Msg(msg))
+                .map_err(|err| format!("{:?}", err))
+                .select(
+                    waiter
+                        .by_ref()
+                        .map(|_| StreamRes::Close)
+                        .map_err(|err| format!("{:?}", err)),
+                )
+                .or_else(|e| future::err(self.view.global_err(e)))
+                .and_then(|res| match res {
+                    StreamRes::Msg(msg) => match msg {
+                        OwnedMessage::Ping(p) => {
+                            self.send_raw(OwnedMessage::Pong(p));
+                            future::ok(())
+                        }
+                        OwnedMessage::Close(data) => {
+                            self.view.server_close(data);
+                            future::err(())
+                        }
+                        OwnedMessage::Text(s) => {
+                            match serde_json::from_str::<SMessage>(&s) {
+                                Err(e) => self.view.global_err(format!("{}", e.description())),
+                                Ok(msg) => if let SMessage::ResourcesExtant { ref ids, .. } = msg {
+                                    let ids: Vec<_> =
+                                        ids.iter().map(|id| id.clone().into_owned()).collect();
+
+                                    self.send(CMessage::Subscribe {
+                                        serial: self.next_serial(),
+                                        ids: ids.clone(),
+                                    });
+                                    self.send(CMessage::Unsubscribe {
+                                        serial: self.next_serial(),
+                                        ids: ids,
+                                    });
+                                } else {
+                                    self.view.handle_rpc(self, &msg);
+                                },
+                            };
+                            future::ok(())
+                        }
+                        _ => unreachable!(),
+                    },
+                    StreamRes::Close => future::err(()),
+                });
+
+            // Wait until the stream is, or should be, terminated
+            let _ = core.run(msg_handler.for_each(|_| Ok(())));
+
+            if ::RUNNING.load(Ordering::Acquire) {
                 *self.socket.borrow_mut() = None;
+                continue;
+            } else {
+                break;
             }
         }
     }

@@ -97,10 +97,15 @@ pub mod align {
     }
 }
 
-use regex::{self, Regex};
-use synapse_rpc::resource::Torrent;
+use synapse_rpc::criterion::{Criterion, Operation, Value};
+use synapse_rpc::message::CMessage;
+use synapse_rpc::resource::ResourceKind;
+use termion::color;
 use unicode_segmentation::UnicodeSegmentation;
 use unicode_width::UnicodeWidthStr;
+
+use rpc::RpcContext;
+use view::tui::widgets;
 
 // FIXME: Wide/Half chars, unicode-width only works for CJK iirc
 pub fn count_without_styling(l: &str) -> usize {
@@ -124,4 +129,126 @@ pub fn count_without_styling(l: &str) -> usize {
 
 pub fn count(l: &str) -> usize {
     l.graphemes(true).map(|g| g.width()).sum()
+}
+
+#[derive(Clone)]
+enum FilterMode {
+    Insensitive,
+    Sensitive,
+}
+
+impl FilterMode {
+    fn cycle(&mut self) {
+        match self {
+            &mut FilterMode::Insensitive => {
+                *self = FilterMode::Sensitive;
+            }
+            &mut FilterMode::Sensitive => {
+                *self = FilterMode::Insensitive;
+            }
+        }
+    }
+}
+
+pub struct Filter {
+    mode: FilterMode,
+    input: widgets::Input,
+    s1: u64,
+    s2: u64,
+}
+
+impl Filter {
+    pub fn new(serial_torr: u64, serial_trac: u64) -> Filter {
+        Filter {
+            mode: FilterMode::Insensitive,
+            input: widgets::Input::from("", 1),
+            s1: serial_torr,
+            s2: serial_trac,
+        }
+    }
+
+    pub fn init(&self, ctx: &RpcContext) {
+        ctx.send(CMessage::FilterSubscribe {
+            serial: self.s1,
+            kind: ResourceKind::Torrent,
+            criteria: Vec::new(),
+        });
+        ctx.send(CMessage::FilterSubscribe {
+            serial: self.s2,
+            kind: ResourceKind::Tracker,
+            criteria: Vec::new(),
+        });
+    }
+
+    pub fn update(&self, ctx: &RpcContext) {
+        // TODO: Actual filtering syntax
+        match self.mode {
+            FilterMode::Insensitive => {
+                ctx.send(CMessage::FilterSubscribe {
+                    serial: self.s1,
+                    kind: ResourceKind::Torrent,
+                    criteria: vec![
+                        Criterion {
+                            field: "name".into(),
+                            op: Operation::ILike,
+                            value: Value::S(self.input.inner().into()),
+                        },
+                    ],
+                });
+            }
+            FilterMode::Sensitive => {
+                ctx.send(CMessage::FilterSubscribe {
+                    serial: self.s1,
+                    kind: ResourceKind::Torrent,
+                    criteria: vec![
+                        Criterion {
+                            field: "name".into(),
+                            op: Operation::Like,
+                            value: Value::S(self.input.inner().into()),
+                        },
+                    ],
+                });
+            }
+        }
+    }
+
+    pub fn cycle(&mut self) {
+        self.mode.cycle();
+    }
+
+    pub fn format(&self, active: bool) -> String {
+        let (c_s, c_e, cnt) = if active {
+            (
+                format!("{}", color::Fg(color::Cyan)),
+                format!("{}", color::Fg(color::Reset)),
+                self.input.format_active(),
+            )
+        } else {
+            ("".into(), "".into(), self.input.format_inactive().into())
+        };
+        format!(
+            "{}{}{}{}",
+            c_s,
+            match self.mode {
+                FilterMode::Insensitive => "Filter[i]: ",
+                FilterMode::Sensitive => "Filter[s]: ",
+            },
+            c_e,
+            cnt
+        )
+    }
+}
+
+impl ::std::ops::Deref for Filter {
+    type Target = widgets::Input;
+
+    fn deref(&self) -> &Self::Target {
+        &self.input
+    }
+}
+
+impl ::std::ops::DerefMut for Filter {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.input
+    }
 }

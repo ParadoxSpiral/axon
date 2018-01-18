@@ -30,6 +30,11 @@ use utils;
 use utils::align::{self, x, y};
 use super::{Component, HandleInput, HandleRpc, InputResult, Renderable};
 
+pub enum Unit {
+    Lines(u16),
+    Percent(f32),
+}
+
 pub struct VSplit<'a, L: 'a, R: 'a>
 where
     L: BorrowMut<Renderable + 'a>,
@@ -37,8 +42,9 @@ where
 {
     left: L,
     right: R,
-    left_active: bool,
-    left_size_factor: f32,
+    left_active: Option<bool>,
+    left_size: Unit,
+    draw_div: bool,
     _marker: PhantomData<&'a ()>,
 }
 
@@ -47,13 +53,19 @@ where
     L: BorrowMut<Renderable + 'a>,
     R: BorrowMut<Renderable + 'a>,
 {
-    pub fn new(left: L, right: R, left_active: bool, left_size_factor: f32) -> VSplit<'a, L, R> {
-        assert!(left_size_factor < 1. && left_size_factor > 0.);
+    pub fn new(
+        left: L,
+        right: R,
+        left_active: Option<bool>,
+        left_size: Unit,
+        draw_div: bool,
+    ) -> VSplit<'a, L, R> {
         VSplit {
             left,
             right,
             left_active,
-            left_size_factor,
+            left_size,
+            draw_div,
             _marker: PhantomData,
         }
     }
@@ -73,33 +85,43 @@ where
     }
     fn render(&mut self, target: &mut Vec<u8>, width: u16, height: u16, x_off: u16, y_off: u16) {
         // Draw left
-        let left_w = (f32::from(width) * self.left_size_factor).floor() as u16;
+        let left_w = match self.left_size {
+            Unit::Lines(w) => w,
+            Unit::Percent(p) => (width as f32 * p).floor() as u16,
+        };
         self.left
             .borrow_mut()
             .render(target, left_w, height, x_off, y_off);
 
-        // Draw divider
-        for i in 0..height {
-            write!(
-                target,
-                "{}{}",
-                cursor::Goto(x_off + left_w + 1, y_off + i),
-                {
-                    if self.left_active && i < height / 2 || !self.left_active && i > height / 2 {
-                        format!("{}┃{}", color::Fg(color::Cyan), color::Fg(color::Reset))
-                    } else {
-                        "│".into()
+        let comp = if self.draw_div {
+            // Draw divider
+            for i in 0..height {
+                write!(
+                    target,
+                    "{}{}",
+                    cursor::Goto(x_off + left_w, y_off + i),
+                    {
+                        if self.left_active.unwrap_or(false) && i < height / 2
+                            || !self.left_active.unwrap_or(true) && i > height / 2
+                        {
+                            format!("{}│{}", color::Fg(color::Cyan), color::Fg(color::Reset))
+                        } else {
+                            "│".into()
+                        }
                     }
-                }
-            ).unwrap();
-        }
+                ).unwrap();
+            }
+            1
+        } else {
+            0
+        };
 
         // Draw right
         self.right.borrow_mut().render(
             target,
-            width - left_w - 1,
+            width - left_w - comp,
             height,
-            x_off + left_w + 2,
+            x_off + left_w + comp,
             y_off,
         );
     }
@@ -112,8 +134,9 @@ where
 {
     top: T,
     bot: B,
-    top_active: bool,
-    top_size_factor: f32,
+    top_active: Option<bool>,
+    top_size: Unit,
+    draw_div: bool,
     _marker: PhantomData<&'a ()>,
 }
 
@@ -122,12 +145,19 @@ where
     T: BorrowMut<Renderable + 'a>,
     B: BorrowMut<Renderable + 'a>,
 {
-    pub fn new(top: T, bot: B, top_active: bool, top_size_factor: f32) -> HSplit<'a, T, B> {
+    pub fn new(
+        top: T,
+        bot: B,
+        top_active: Option<bool>,
+        top_size: Unit,
+        draw_div: bool,
+    ) -> HSplit<'a, T, B> {
         HSplit {
             top,
             bot,
             top_active,
-             top_size_factor,
+            top_size,
+            draw_div,
             _marker: PhantomData,
         }
     }
@@ -147,31 +177,43 @@ where
     }
     fn render(&mut self, target: &mut Vec<u8>, width: u16, height: u16, x_off: u16, y_off: u16) {
         // Draw top
-        let top_h = (f32::from(height) * self.top_size_factor).floor() as u16;
+        let top_h = match self.top_size {
+            Unit::Lines(h) => h,
+            Unit::Percent(p) => (height as f32 * p).floor() as u16,
+        };
         self.top
             .borrow_mut()
             .render(target, width, top_h, x_off, y_off);
 
-        // Draw divider
-        for i in 0..width {
-            write!(
-                target,
-                "{}{}",
-                cursor::Goto(x_off + i, y_off + top_h + 1),
+        let comp = if self.draw_div {
+            // Draw divider
+            let div = (0..width).fold("".to_owned(), |acc, i| {
+                if self.top_active.unwrap_or(false) && i == 0
+                    || !self.top_active.unwrap_or(true) && i == width / 2
                 {
-                    if self.top_active && i < width / 2 || !self.top_active && i > width / 2 {
-                        format!("{}━{}", color::Fg(color::Cyan), color::Fg(color::Reset))
-                    } else {
-                        "─".into()
-                    }
+                    acc + &*format!("{}─", color::Fg(color::Cyan))
+                } else if self.top_active.unwrap_or(false) && i == width / 2
+                    || !self.top_active.unwrap_or(true) && i == width
+                {
+                    acc + &*format!("─{}", color::Fg(color::Reset))
+                } else {
+                    acc + "─"
                 }
-            ).unwrap();
-        }
+            });
+            write!(target, "{}{}", cursor::Goto(x_off, y_off + top_h), div).unwrap();
+            1
+        } else {
+            0
+        };
 
         // Draw bot
-        self.bot
-            .borrow_mut()
-            .render(target, width, height - top_h - 1, x_off, y_off + top_h + 2);
+        self.bot.borrow_mut().render(
+            target,
+            width,
+            height - top_h - comp,
+            x_off,
+            y_off + top_h + comp,
+        );
     }
 }
 
@@ -208,22 +250,19 @@ impl Renderable for Tabs {
     fn render(&mut self, target: &mut Vec<u8>, width: u16, height: u16, x_off: u16, y_off: u16) {
         // Draw header
         let n_tabs = self.tabs.len() as u16;
+        // Compensate for uneven width
+        let compensate = if (width as f32 / n_tabs as f32) % 2. != 0. {
+            true
+        } else {
+            false
+        };
         for (i, t) in self.tabs.iter().enumerate() {
             let name = t.name();
             let name_l = utils::count_without_styling(&name) as u16;
-            let mut x_off = x_off + i as u16 * (width / n_tabs);
-            let mut compensate = false;
+            let x_off = x_off + i as u16 * (width / n_tabs);
             let sep = if width / n_tabs < name_l {
                 "".into()
             } else {
-                // Compensate if width is uneven
-                if i + 1 == n_tabs as usize && (f32::from(width) / f32::from(n_tabs)) % 2. != 0. {
-                    compensate = true;
-                    // Overwrite last elem of previous sep, or there will be a gap
-                    if x_off != 1 {
-                        x_off -= 1;
-                    }
-                }
                 (0..(width / n_tabs - name_l) / 2).fold("".to_owned(), |acc, _| acc + "─")
             };
             let sep_l = utils::count_without_styling(&sep) as u16;
@@ -242,8 +281,8 @@ impl Renderable for Tabs {
             if self.active_idx == i {
                 write!(target, "{}", color::Fg(color::Reset)).unwrap();
             }
-            if compensate {
-                write!(target, "{}──", sep).unwrap();
+            if compensate && i + 1 == n_tabs as usize {
+                write!(target, "{}─", sep).unwrap();
             } else {
                 write!(target, "{}", sep).unwrap();
             }
@@ -300,10 +339,14 @@ impl HandleInput for Tabs {
 }
 
 impl HandleRpc for Tabs {
-    fn rpc(&mut self, ctx: &RpcContext, msg: &SMessage) {
+    fn rpc(&mut self, ctx: &RpcContext, msg: &SMessage) -> bool {
+        let mut res = false;
         if !self.tabs.is_empty() {
-            self.tabs.get_mut(self.active_idx).unwrap().rpc(ctx, msg);
+            if self.tabs.get_mut(self.active_idx).unwrap().rpc(ctx, msg) {
+                res = true;
+            }
         }
+        res
     }
     fn init(&mut self, ctx: &RpcContext) {
         for t in &mut self.tabs {
@@ -482,9 +525,9 @@ where
         self.top.init(ctx);
         self.below.init(ctx);
     }
-    fn rpc(&mut self, ctx: &RpcContext, msg: &SMessage) {
+    fn rpc(&mut self, ctx: &RpcContext, msg: &SMessage) -> bool {
         self.top.rpc(ctx, msg);
-        self.below.rpc(ctx, msg);
+        self.below.rpc(ctx, msg)
     }
 }
 
@@ -701,6 +744,14 @@ impl Input {
         self.pos = 1;
     }
 
+    pub fn home(&mut self) {
+        self.pos = 1;
+    }
+
+    pub fn end(&mut self) {
+        self.pos = self.content.len() + 1
+    }
+
     pub fn cursor_left(&mut self) {
         if self.pos > 1 {
             self.pos -= 1;
@@ -735,7 +786,7 @@ impl Input {
         }
     }
 
-    pub fn format_active(&mut self) -> String {
+    pub fn format_active(&self) -> String {
         let len = self.content.graphemes(true).count();
         if self.pos > len {
             format!(
@@ -806,10 +857,10 @@ impl PasswordInput {
         } else {
             format!(
                 "{}{}{}{}{}",
-                &stars[..self.pos - 1],
+                &stars[..self.pos.saturating_sub(1)],
                 style::Underline,
                 if self.pos > 1 || !self.content.is_empty() {
-                    &stars[self.pos - 1..self.pos]
+                    &stars[self.pos.saturating_sub(1)..self.pos]
                 } else {
                     " "
                 },
@@ -900,8 +951,8 @@ impl<T> HandleRpc for CloseOnInput<T>
 where
     T: Renderable + HandleRpc,
 {
-    fn rpc(&mut self, ctx: &RpcContext, msg: &SMessage) {
-        self.content.rpc(ctx, msg);
+    fn rpc(&mut self, ctx: &RpcContext, msg: &SMessage) -> bool {
+        self.content.rpc(ctx, msg)
     }
     fn init(&mut self, ctx: &RpcContext) {
         self.content.init(ctx);
@@ -940,7 +991,9 @@ impl<T> HandleRpc for IgnoreRpc<T>
 where
     T: Renderable,
 {
-    fn rpc(&mut self, _: &RpcContext, _: &SMessage) {}
+    fn rpc(&mut self, _: &RpcContext, _: &SMessage) -> bool {
+        false
+    }
     fn init(&mut self, _: &RpcContext) {}
 }
 
@@ -991,6 +1044,8 @@ impl<T> HandleRpc for IgnoreRpcPassInput<T>
 where
     T: Renderable + HandleInput,
 {
-    fn rpc(&mut self, _: &RpcContext, _: &SMessage) {}
+    fn rpc(&mut self, _: &RpcContext, _: &SMessage) -> bool {
+        false
+    }
     fn init(&mut self, _: &RpcContext) {}
 }

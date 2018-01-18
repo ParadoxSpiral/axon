@@ -15,13 +15,18 @@
 // You should have received a copy of the GNU General Public License
 // along with Axon.  If not, see <http://www.gnu.org/licenses/>.
 
+extern crate chrono;
 extern crate crossbeam;
-extern crate libc;
+extern crate futures;
+extern crate humansize;
+#[macro_use]
+extern crate lazy_static;
 extern crate parking_lot;
 extern crate serde;
 extern crate serde_json;
 extern crate synapse_rpc;
 extern crate termion;
+extern crate tokio_core as tokio;
 extern crate unicode_segmentation;
 extern crate unicode_width;
 extern crate url;
@@ -32,7 +37,6 @@ pub mod utils;
 mod view;
 
 use termion::input::TermRead;
-use termion::raw::IntoRawMode;
 
 use std::io;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -41,23 +45,24 @@ use rpc::RpcContext;
 use view::View;
 use view::tui::InputResult;
 
-// TODO: Persistence, config, resizing, check which colors are supported
+lazy_static!(
+    static ref RUNNING: AtomicBool = AtomicBool::new(true);
+);
 
+// TODO: config
 fn main() {
-    let running = AtomicBool::new(true);
-    let stdout = io::stdout().into_raw_mode().unwrap();
-    let view = View::init(&stdout);
+    let view = View::init();
     let rpc = RpcContext::new(&view);
 
     crossbeam::scope(|scope| {
         // View worker
         scope.spawn(|| {
-            view.render_until_death(&running);
+            view.render_until_death();
         });
 
-        // RPC worker
+        // rpc worker
         scope.spawn(|| {
-            rpc.recv_until_death(&running);
+            rpc.recv_until_death();
         });
 
         // Input worker
@@ -65,9 +70,10 @@ fn main() {
             let stdin = io::stdin();
             for ev in stdin.lock().keys() {
                 let res = if let Ok(k) = ev {
+                    // Pass input through components
                     view.handle_input(&rpc, k)
                 } else {
-                    running.store(false, Ordering::Release);
+                    RUNNING.store(false, Ordering::Release);
                     rpc.wake();
                     view.wake();
                     panic!("Unrecoverable error: {:?}", ev.unwrap_err())
@@ -75,7 +81,7 @@ fn main() {
 
                 match res {
                     InputResult::Close => {
-                        running.store(false, Ordering::Release);
+                        RUNNING.store(false, Ordering::Release);
                         rpc.wake();
                         view.wake();
                         break;

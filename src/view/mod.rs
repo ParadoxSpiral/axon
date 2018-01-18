@@ -19,12 +19,13 @@ use parking_lot::{Condvar, Mutex};
 use synapse_rpc::message::SMessage;
 use termion::{self, clear, cursor};
 use termion::event::Key;
+use termion::raw::{IntoRawMode, RawTerminal};
 use websocket;
 
 use std::cell::RefCell;
-use std::io::{Stdout, StdoutLock, Write};
+use std::io::{self, Stdout, Write};
 use std::mem::{self, ManuallyDrop};
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::Ordering;
 use std::time::Duration;
 
 use rpc::RpcContext;
@@ -36,29 +37,20 @@ enum DisplayState {
     Component(Box<Component>),
 }
 
-pub struct View<'a> {
+pub struct View {
     content: Mutex<DisplayState>,
     render_buf: Mutex<Vec<u8>>,
-    stdout: RefCell<StdoutLock<'a>>,
     waiter: (Condvar, Mutex<()>),
+    stdout: RefCell<RawTerminal<Stdout>>,
     // Unfortunately can't check with Any::is if the component is the login panel
     logged_in: RefCell<bool>,
 }
 
-unsafe impl<'a> Send for View<'a> {}
-unsafe impl<'a> Sync for View<'a> {}
+unsafe impl Send for View {}
+unsafe impl Sync for View {}
 
-// Restore cursor
-impl<'a> Drop for View<'a> {
-    fn drop(&mut self) {
-        let mut stdo = self.stdout.borrow_mut();
-        write!(stdo, "{}", cursor::Show).unwrap();
-        stdo.flush().unwrap();
-    }
-}
-
-impl<'a> View<'a> {
-    pub fn init(stdout: &'a Stdout) -> View<'a> {
+impl View {
+    pub fn init() -> View {
         let panel = Box::new(widgets::IgnoreRpcPassInput::new(tui::LoginPanel::new()));
 
         let size = termion::terminal_size().unwrap_or((0, 0));
@@ -68,7 +60,7 @@ impl<'a> View<'a> {
         View {
             content: Mutex::new(DisplayState::Component(panel)),
             render_buf: Mutex::new(rb),
-            stdout: RefCell::new(stdout.lock()),
+            stdout: RefCell::new(io::stdout().into_raw_mode().unwrap()),
             waiter: (Condvar::new(), Mutex::new(())),
             logged_in: RefCell::new(false),
         }
@@ -98,24 +90,24 @@ impl<'a> View<'a> {
                 }
             }
 
-            let mut out = self.stdout.borrow_mut();
-            out.write_all(&*buf).unwrap();
-            out.flush().unwrap();
+            let mut o = self.stdout.borrow_mut();
+            o.write_all(&*buf).unwrap();
+            o.flush().unwrap();
             buf.clear();
         } else {
-            let mut stdout = self.stdout.borrow_mut();
-            write!(stdout, "small!").unwrap();
-            stdout.flush().unwrap();
+            let mut o = self.stdout.borrow_mut();
+            write!(o, "small!").unwrap();
+            o.flush().unwrap();
         }
     }
 
-    pub fn render_until_death(&self, running: &AtomicBool) {
-        while running.load(Ordering::Acquire) {
+    pub fn render_until_death(&self) {
+        while ::RUNNING.load(Ordering::Acquire) {
             // Update either every 3s or when input demands it
             self.render();
             self.waiter
                 .0
-                .wait_for(&mut self.waiter.1.lock(), Duration::from_millis(2500));
+                .wait_for(&mut self.waiter.1.lock(), Duration::from_secs(3));
         }
     }
 
@@ -124,7 +116,7 @@ impl<'a> View<'a> {
             Key::Ctrl('d') => if !*self.logged_in.borrow() {
                 InputResult::Close
             } else {
-                ctx.server_close();
+                ctx.wake();
                 self.server_close(None);
                 InputResult::Rerender
             },
@@ -171,10 +163,13 @@ impl<'a> View<'a> {
     pub fn handle_rpc(&self, ctx: &RpcContext, msg: &SMessage) {
         // FIXME: NLL
         let mut cnt = self.content.lock();
-        match *cnt {
+        if match *cnt {
             DisplayState::GlobalErr(_, ref mut cmp) | DisplayState::Component(ref mut cmp) => {
                 cmp.rpc(ctx, msg)
             }
+        } {
+            drop(cnt);
+            self.wake();
         }
     }
 
