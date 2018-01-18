@@ -520,6 +520,10 @@ impl Renderable for MainPanel {
             let ceil = if self.filter.0 { height - 1 } else { height };
             for (i, t) in self.torrents.1.iter().take(ceil as _).enumerate() {
                 let (c_s, c_e) = match self.focus {
+                    Focus::Torrents if self.torrents.0 == i && t.error.is_some() => (
+                        format!("{}{}", color::Fg(color::Cyan), color::Bg(color::Red)),
+                        format!("{}{}", color::Fg(color::Reset), color::Bg(color::Reset)),
+                    ),
                     Focus::Torrents if self.torrents.0 == i => (
                         format!("{}", color::Fg(color::Cyan)),
                         format!("{}", color::Fg(color::Reset)),
