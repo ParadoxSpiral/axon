@@ -22,4 +22,4 @@ Torrent details:
 - `q` closes the current details pane
 
 # Windows
-Termion currently does not support windows, but might in the future ([#103](https://github.com/ticki/termion/issues/103)) (I really don't care about Windows, and dislike you for using it).
+Termion currently does not support windows, but might in the future ([#103](https://github.com/ticki/termion/issues/103)).
