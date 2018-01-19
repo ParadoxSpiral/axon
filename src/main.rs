@@ -49,7 +49,6 @@ lazy_static!(
     static ref RUNNING: AtomicBool = AtomicBool::new(true);
 );
 
-// TODO: config
 fn main() {
     let view = View::init();
     let rpc = RpcContext::new(&view);

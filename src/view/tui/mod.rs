@@ -209,7 +209,6 @@ impl HandleInput for LoginPanel {
     }
 }
 
-// TODO: See if this would work as a closure w/ NLL
 macro_rules! f_push {
     ($s:ident, $c:ident, $v:expr) => {
         $s.filter.1.push($v);
@@ -626,13 +625,21 @@ impl Renderable for MainPanel {
                 self.server.rate_up.file_size(sopt::DECIMAL).unwrap(),
                 self.server
                     .throttle_up
-                    .map(|t| t.file_size(sopt::DECIMAL).unwrap())
-                    .unwrap_or(String::from("∞")),
+                    .map(|t| if t == -1 {
+                        "∞".into()
+                    } else {
+                        t.file_size(sopt::DECIMAL).unwrap()
+                    })
+                    .unwrap_or("∞".into()),
                 self.server.rate_down.file_size(sopt::DECIMAL).unwrap(),
                 self.server
                     .throttle_down
-                    .map(|t| t.file_size(sopt::DECIMAL).unwrap())
-                    .unwrap_or(String::from("∞")),
+                    .map(|t| if t == -1 {
+                        "∞".into()
+                    } else {
+                        t.file_size(sopt::DECIMAL).unwrap()
+                    })
+                    .unwrap_or("∞".into()),
                 if self.server.ses_transferred_down == 0 {
                     1.
                 } else {
