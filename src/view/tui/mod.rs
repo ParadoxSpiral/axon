@@ -563,12 +563,9 @@ impl Renderable for MainPanel {
                     c_s,
                     t.url
                         .as_ref()
-                        .map(|u| u.host_str().unwrap().into())
+                        .map(|u| u.host_str().unwrap_or("?.?").into())
                         .unwrap_or_else(|| "?.?".to_owned()),
-                    t.url
-                        .as_ref()
-                        .map(|u| u.port().unwrap())
-                        .unwrap_or_else(|| 0),
+                    t.url.as_ref().map(|u| u.port().unwrap_or(0)).unwrap_or(0),
                     c_e,
                 )).render(target, width, 1, x, y + i as u16);
             }
