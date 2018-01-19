@@ -853,7 +853,7 @@ impl Renderable for TorrentDetailsPanel {
             self.torr.status.as_str(),
             if let Some(ref err) = self.torr.error {
                 format!(": {}", err)
-            }else {
+            } else {
                 "".into()
             },
         )).render(target, width, height, x_off, y_off);

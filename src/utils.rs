@@ -182,34 +182,20 @@ impl Filter {
 
     pub fn update(&self, ctx: &RpcContext) {
         // TODO: Actual filtering syntax
-        match self.mode {
-            FilterMode::Insensitive => {
-                ctx.send(CMessage::FilterSubscribe {
-                    serial: self.s1,
-                    kind: ResourceKind::Torrent,
-                    criteria: vec![
-                        Criterion {
-                            field: "name".into(),
-                            op: Operation::ILike,
-                            value: Value::S(self.input.inner().into()),
-                        },
-                    ],
-                });
-            }
-            FilterMode::Sensitive => {
-                ctx.send(CMessage::FilterSubscribe {
-                    serial: self.s1,
-                    kind: ResourceKind::Torrent,
-                    criteria: vec![
-                        Criterion {
-                            field: "name".into(),
-                            op: Operation::Like,
-                            value: Value::S(self.input.inner().into()),
-                        },
-                    ],
-                });
-            }
-        }
+        ctx.send(CMessage::FilterSubscribe {
+            serial: self.s1,
+            kind: ResourceKind::Torrent,
+            criteria: vec![
+                Criterion {
+                    field: "name".into(),
+                    op: match self.mode {
+                        FilterMode::Insensitive => Operation::ILike,
+                        FilterMode::Sensitive => Operation::Like,
+                    },
+                    value: Value::S(self.input.inner().into()),
+                },
+            ],
+        });
     }
 
     pub fn cycle(&mut self) {
