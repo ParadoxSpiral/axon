@@ -195,10 +195,13 @@ impl<'v> RpcContext<'v> {
                                         serial: self.next_serial(),
                                         ids: ids.clone(),
                                     });
+                                } else if let SMessage::ResourcesRemoved { ref ids, .. } = msg {
                                     self.send(CMessage::Unsubscribe {
                                         serial: self.next_serial(),
-                                        ids: ids,
+                                        ids: ids.clone(),
                                     });
+
+                                    self.view.handle_rpc(self, &msg);
                                 } else {
                                     self.view.handle_rpc(self, &msg);
                                 },
