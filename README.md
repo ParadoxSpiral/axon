@@ -14,7 +14,7 @@ Note: Currently termion does not respect terminfo and uses ANSI color codes ([#1
 Torrent panel:
 - `^s` cycles filtering mode (case sensitive -> case insentive ->0)
 - `^f` focuses the filter input
-- `esc` clears the filter
+- `esc` clears the filter, if selected
 - `d` opens the selected torrents' details
 - `t` toggles displayal of the list of trackers
 
