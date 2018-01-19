@@ -96,20 +96,15 @@ where
         let comp = if self.draw_div {
             // Draw divider
             for i in 0..height {
-                write!(
-                    target,
-                    "{}{}",
-                    cursor::Goto(x_off + left_w, y_off + i),
+                write!(target, "{}{}", cursor::Goto(x_off + left_w, y_off + i), {
+                    if self.left_active.unwrap_or(false) && i < height / 2
+                        || !self.left_active.unwrap_or(true) && i > height / 2
                     {
-                        if self.left_active.unwrap_or(false) && i < height / 2
-                            || !self.left_active.unwrap_or(true) && i > height / 2
-                        {
-                            format!("{}│{}", color::Fg(color::Cyan), color::Fg(color::Reset))
-                        } else {
-                            "│".into()
-                        }
+                        format!("{}│{}", color::Fg(color::Cyan), color::Fg(color::Reset))
+                    } else {
+                        "│".into()
                     }
-                ).unwrap();
+                }).unwrap();
             }
             1
         } else {

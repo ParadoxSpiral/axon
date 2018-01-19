@@ -583,7 +583,7 @@ impl Renderable for MainPanel {
                 .collect::<Vec<_>>();
             widgets::Tabs::new(ts, self.details.0).render(target, width, height, x, y);
         };
-        let draw_server = |target: &mut _, width, height, x, y| {
+        let draw_footer = |target: &mut _, width, height, x, y| {
             widgets::Text::<_, align::x::Left, align::y::Top>::new(format!(
                 "Server uptime: {}   {}[{}]↑ {}[{}]↓   \
                  Session ratio: {:.2}, {}↑ {}↓   Lifetime ratio: {:.2}, {}↑ {}↓",
@@ -649,7 +649,7 @@ impl Renderable for MainPanel {
             (false, true) => {
                 widgets::HSplit::new(
                     &mut widgets::RenderFn::new(draw_torrents) as &mut Renderable,
-                    &mut widgets::RenderFn::new(draw_server) as &mut Renderable,
+                    &mut widgets::RenderFn::new(draw_footer) as &mut Renderable,
                     None,
                     widgets::Unit::Lines(height - 2),
                     true,
@@ -664,7 +664,7 @@ impl Renderable for MainPanel {
                         widgets::Unit::Percent(0.2),
                         true,
                     ) as &mut Renderable,
-                    &mut widgets::RenderFn::new(draw_server) as &mut Renderable,
+                    &mut widgets::RenderFn::new(draw_footer) as &mut Renderable,
                     None,
                     widgets::Unit::Lines(height - 2),
                     true,
@@ -679,7 +679,7 @@ impl Renderable for MainPanel {
                         widgets::Unit::Percent(0.65),
                         false,
                     ) as &mut Renderable,
-                    &mut widgets::RenderFn::new(draw_server) as &mut Renderable,
+                    &mut widgets::RenderFn::new(draw_footer) as &mut Renderable,
                     None,
                     widgets::Unit::Lines(height - 2),
                     true,
@@ -700,7 +700,7 @@ impl Renderable for MainPanel {
                         widgets::Unit::Percent(0.2),
                         true,
                     ) as &mut Renderable,
-                    &mut widgets::RenderFn::new(draw_server) as &mut Renderable,
+                    &mut widgets::RenderFn::new(draw_footer) as &mut Renderable,
                     None,
                     widgets::Unit::Lines(height - 2),
                     true,
@@ -769,14 +769,20 @@ impl HandleRpc for MainPanel {
                             if let Resource::Torrent(ref t) = **res {
                                 self.torrents.1.push(t.clone());
                                 // TODO: insertion sort
-                                self.torrents
-                                    .1
-                                    .sort_unstable_by(|t1, t2| t1.name.cmp(&t2.name));
+                                self.torrents.1.sort_unstable_by(|t1, t2| {
+                                    t1.name
+                                        .as_ref()
+                                        .map(|t| t.to_lowercase())
+                                        .cmp(&t2.name.as_ref().map(|t| t.to_lowercase()))
+                                });
                             } else if let Resource::Tracker(ref t) = **res {
                                 self.trackers.push(t.clone());
-                                self.torrents
-                                    .1
-                                    .sort_unstable_by(|t1, t2| t1.name.cmp(&t2.name));
+                                self.torrents.1.sort_unstable_by(|t1, t2| {
+                                    t1.name
+                                        .as_ref()
+                                        .map(|t| t.to_lowercase())
+                                        .cmp(&t2.name.as_ref().map(|t| t.to_lowercase()))
+                                });
                             } else if let Resource::Server(ref s) = **res {
                                 self.server = s.clone();
                             }
