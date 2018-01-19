@@ -147,10 +147,11 @@ impl<'v> RpcContext<'v> {
     }
 
     pub fn recv_until_death(&self) {
+        let mut waiter = self.waiter.1.borrow_mut();
+
         // Each iteration represents the lifetime of a connection to a server
         loop {
             // Wait for initialization
-            let mut waiter = self.waiter.1.borrow_mut();
             let _ = waiter.by_ref().wait().next().unwrap();
 
             // Check if exited before login
@@ -217,6 +218,7 @@ impl<'v> RpcContext<'v> {
             let _ = core.run(msg_handler.for_each(|_| Ok(())));
 
             if ::RUNNING.load(Ordering::Acquire) {
+                drop(socket);
                 *self.socket.borrow_mut() = None;
                 continue;
             } else {
