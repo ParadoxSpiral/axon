@@ -848,9 +848,14 @@ impl Renderable for TorrentDetailsPanel {
             .clone()
     }
     fn render(&mut self, target: &mut Vec<u8>, width: u16, height: u16, x_off: u16, y_off: u16) {
-        widgets::Text::<_, align::x::Center, align::y::Center>::new(format!(
-            "details of: {}",
-            self.name()
+        widgets::Text::<_, align::x::Left, align::y::Top>::new(format!(
+            "Status: {}{}",
+            self.torr.status.as_str(),
+            if let Some(ref err) = self.torr.error {
+                format!(": {}", err)
+            }else {
+                "".into()
+            },
         )).render(target, width, height, x_off, y_off);
     }
 }
