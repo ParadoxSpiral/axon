@@ -550,8 +550,21 @@ impl Renderable for MainPanel {
             }
         };
         let draw_trackers = |target: &mut _, width, height, x, y| {
+            let sel_tor = self.torrents.1.get(self.torrents.0);
             for (i, t) in self.trackers.iter().take(height as _).enumerate() {
-                let (c_s, c_e) = if t.error.is_some() {
+                let (c_s, c_e) = if sel_tor.map(|s| s.id == t.torrent_id).unwrap_or(false)
+                    && t.error.is_some()
+                {
+                    (
+                        format!("{}{}", color::Fg(color::Cyan), color::Bg(color::Red)),
+                        format!("{}{}", color::Fg(color::Reset), color::Bg(color::Reset)),
+                    )
+                } else if sel_tor.map(|s| s.id == t.torrent_id).unwrap_or(false) {
+                    (
+                        format!("{}", color::Fg(color::Cyan)),
+                        format!("{}", color::Fg(color::Reset)),
+                    )
+                } else if t.error.is_some() {
                     (
                         format!("{}", color::Fg(color::Red)),
                         format!("{}", color::Fg(color::Reset)),
@@ -620,10 +633,10 @@ impl Renderable for MainPanel {
                     .throttle_down
                     .map(|t| t.file_size(sopt::DECIMAL).unwrap())
                     .unwrap_or(String::from("∞")),
-                self.server.ses_transferred_up as f32 / if self.server.ses_transferred_down == 0 {
+                if self.server.ses_transferred_down == 0 {
                     1.
                 } else {
-                    self.server.ses_transferred_down as f32
+                    self.server.ses_transferred_up as f32 / self.server.ses_transferred_down as f32
                 },
                 self.server
                     .ses_transferred_up
@@ -633,10 +646,10 @@ impl Renderable for MainPanel {
                     .ses_transferred_down
                     .file_size(sopt::DECIMAL)
                     .unwrap(),
-                self.server.transferred_up as f32 / if self.server.transferred_down == 0 {
+                if self.server.transferred_down == 0 {
                     1.
                 } else {
-                    self.server.transferred_down as f32
+                    self.server.transferred_up as f32 / self.server.transferred_down as f32
                 },
                 self.server.transferred_up.file_size(sopt::DECIMAL).unwrap(),
                 self.server
