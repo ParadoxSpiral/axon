@@ -856,13 +856,49 @@ impl Renderable for TorrentDetailsPanel {
     }
     fn render(&mut self, target: &mut Vec<u8>, width: u16, height: u16, x_off: u16, y_off: u16) {
         widgets::Text::<_, align::x::Left, align::y::Top>::new(format!(
-            "Status: {}{}",
+            "Status: {}{}    Sequential: {:?}    Created: {}    Modified: {}",
             self.torr.status.as_str(),
             if let Some(ref err) = self.torr.error {
                 format!(": {}", err)
             } else {
                 "".into()
             },
-        )).render(target, width, height, x_off, y_off);
+            self.torr.sequential,
+            self.torr.created,
+            self.torr.modified,
+        )).render(target, width, 1, x_off, y_off);
+
+        widgets::Text::<_, align::x::Left, align::y::Top>::new(
+            format!("Path: {}", self.torr.path,),
+        ).render(target, width, 1, x_off, y_off + 1);
+
+        widgets::Text::<_, align::x::Left, align::y::Top>::new(format!(
+            "Size: {}    Progress: {}%    Availability: {}%    Priority: {}",
+            self.torr
+                .size
+                .map(|p| p.file_size(sopt::DECIMAL).unwrap())
+                .unwrap_or("?".into()),
+            (self.torr.progress * 100.).round(),
+            (self.torr.availability * 100.).round(),
+            self.torr.priority,
+        )).render(target, width, 1, x_off, y_off + 2);
+
+        widgets::Text::<_, align::x::Left, align::y::Top>::new(format!(
+            "Files: {}    Pieces: {}    P-size: {}    Peers: {}    Trackers: {}",
+            self.torr
+                .files
+                .map(|f| format!("{}", f))
+                .unwrap_or("?".into()),
+            self.torr
+                .pieces
+                .map(|p| format!("{}", p))
+                .unwrap_or("?".into()),
+            self.torr
+                .piece_size
+                .map(|p| p.file_size(sopt::DECIMAL).unwrap())
+                .unwrap_or("?".into()),
+            self.torr.peers,
+            self.torr.trackers,
+        )).render(target, width, 1, x_off, y_off + 3);
     }
 }
