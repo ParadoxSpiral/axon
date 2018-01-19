@@ -798,11 +798,11 @@ impl HandleRpc for MainPanel {
                                 });
                             } else if let Resource::Tracker(ref t) = **res {
                                 self.trackers.push(t.clone());
-                                self.torrents.1.sort_unstable_by(|t1, t2| {
-                                    t1.name
+                                self.trackers.sort_unstable_by(|t1, t2| {
+                                    t1.url
                                         .as_ref()
-                                        .map(|t| t.to_lowercase())
-                                        .cmp(&t2.name.as_ref().map(|t| t.to_lowercase()))
+                                        .map(|u| u.host_str())
+                                        .cmp(&t2.url.as_ref().map(|u| u.host_str()))
                                 });
                             } else if let Resource::Server(ref s) = **res {
                                 self.server = s.clone();
