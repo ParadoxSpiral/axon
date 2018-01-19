@@ -311,6 +311,7 @@ impl HandleInput for MainPanel {
             Key::Ctrl('s') => match self.focus {
                 Focus::Filter => {
                     self.filter.1.cycle();
+                    self.filter.1.update(ctx);
                     InputResult::Rerender
                 }
                 _ => InputResult::Key(Key::Ctrl('s')),
