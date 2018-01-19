@@ -672,7 +672,7 @@ impl Renderable for MainPanel {
                     &mut widgets::RenderFn::new(draw_torrents) as &mut Renderable,
                     &mut widgets::RenderFn::new(draw_footer) as &mut Renderable,
                     None,
-                    widgets::Unit::Lines(height - 2),
+                    widgets::Unit::Lines(height.saturating_sub(2)),
                     true,
                 ).render(target, width, height, x_off, y_off);
             }
@@ -687,7 +687,7 @@ impl Renderable for MainPanel {
                     ) as &mut Renderable,
                     &mut widgets::RenderFn::new(draw_footer) as &mut Renderable,
                     None,
-                    widgets::Unit::Lines(height - 2),
+                    widgets::Unit::Lines(height.saturating_sub(2)),
                     true,
                 ).render(target, width, height, x_off, y_off);
             }
@@ -702,7 +702,7 @@ impl Renderable for MainPanel {
                     ) as &mut Renderable,
                     &mut widgets::RenderFn::new(draw_footer) as &mut Renderable,
                     None,
-                    widgets::Unit::Lines(height - 2),
+                    widgets::Unit::Lines(height.saturating_sub(2)),
                     true,
                 ).render(target, width, height, x_off, y_off);
             }
@@ -723,7 +723,7 @@ impl Renderable for MainPanel {
                     ) as &mut Renderable,
                     &mut widgets::RenderFn::new(draw_footer) as &mut Renderable,
                     None,
-                    widgets::Unit::Lines(height - 2),
+                    widgets::Unit::Lines(height.saturating_sub(2)),
                     true,
                 ).render(target, width, height, x_off, y_off);
             }
