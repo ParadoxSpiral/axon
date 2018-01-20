@@ -17,12 +17,14 @@ pub mod widgets;
 
 use chrono::Utc;
 use humansize::{file_size_opts as sopt, FileSize};
+use itertools::Itertools;
 use synapse_rpc::message::{CMessage, SMessage};
 use synapse_rpc::resource::{Resource, ResourceKind, SResourceUpdate, Server, Torrent, Tracker};
 use termion::{color, cursor};
 use termion::event::Key;
 use url::Url;
 
+use std::collections::HashMap;
 use std::io::Write;
 
 use rpc::RpcContext;
@@ -550,15 +552,59 @@ impl Renderable for MainPanel {
         };
         let draw_trackers = |target: &mut _, width, height, x, y| {
             let sel_tor = self.torrents.1.get(self.torrents.0);
-            for (i, t) in self.trackers.iter().take(height as _).enumerate() {
-                let (c_s, c_e) = if sel_tor.map(|s| s.id == t.torrent_id).unwrap_or(false)
-                    && t.error.is_some()
+            // FIXME: Make this prettier and remove RefCell
+            let dedup_trackers =
+                ::std::cell::RefCell::new(HashMap::with_capacity(self.trackers.len()));
+            let iter = self.trackers
+                .iter()
+                // coalesce works because the trackers are sorted
+                .coalesce(|t1, t2| {
+                    t1.url
+                        .as_ref()
+                        .and_then(|u1| {
+                            t2.url.as_ref().and_then(|u2| {
+                                if u1.host_str().unwrap() == u2.host_str().unwrap() {
+                                    dedup_trackers
+                                        .borrow_mut()
+                                        .entry(u2.host_str().unwrap().clone())
+                                        .or_insert(Vec::new())
+                                        .push(t2.torrent_id.clone());
+                                    Some(Ok(t1))
+                                } else {
+                                    Some(Err((t1, t2)))
+                                }
+                            })
+                        })
+                        .unwrap_or_else(|| Err((t1, t2)))
+                });
+            for (i, t) in iter.take(height as _).enumerate() {
+                let (count, matches_dedup) = t.url
+                    .as_ref()
+                    .map(|u| {
+                        dedup_trackers
+                            .borrow()
+                            .get(u.host_str().unwrap())
+                            .map(|ded| {
+                                (
+                                    1 + ded.len(),
+                                    sel_tor.map(|s| ded.contains(&s.id)).unwrap_or(false),
+                                )
+                            })
+                            .unwrap_or((1, false))
+                    })
+                    .unwrap_or((1, false));
+                let (c_s, c_e) = if sel_tor
+                    .map(|s| s.id == t.torrent_id || matches_dedup)
+                    .unwrap_or(false) && t.error.is_some()
                 {
                     (
                         format!("{}{}", color::Fg(color::Cyan), color::Bg(color::Red)),
                         format!("{}{}", color::Fg(color::Reset), color::Bg(color::Reset)),
                     )
-                } else if sel_tor.map(|s| s.id == t.torrent_id).unwrap_or(false) {
+                } else if sel_tor
+                    .map(|s| s.id == t.torrent_id || matches_dedup)
+                    .unwrap_or(false)
+                {
                     (
                         format!("{}", color::Fg(color::Cyan)),
                         format!("{}", color::Fg(color::Reset)),
@@ -572,13 +618,13 @@ impl Renderable for MainPanel {
                     ("".into(), "".into())
                 };
                 widgets::Text::<_, align::x::Left, align::y::Top>::new(format!(
-                    "{}{}:{}{}",
+                    "{}({}) {}{}",
                     c_s,
+                    count,
                     t.url
                         .as_ref()
-                        .map(|u| u.host_str().unwrap_or("?.?").into())
-                        .unwrap_or_else(|| "?.?".to_owned()),
-                    t.url.as_ref().map(|u| u.port().unwrap_or(0)).unwrap_or(0),
+                        .map(|u| u.host_str().unwrap())
+                        .unwrap_or_else(|| "?.?"),
                     c_e,
                 )).render(target, width, 1, x, y + i as u16);
             }
