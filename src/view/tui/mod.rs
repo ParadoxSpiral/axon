@@ -15,7 +15,6 @@
 
 pub mod widgets;
 
-use chrono::Utc;
 use humansize::{file_size_opts as sopt, FileSize};
 use itertools::Itertools;
 use synapse_rpc::message::{CMessage, SMessage};
@@ -646,28 +645,7 @@ impl Renderable for MainPanel {
             widgets::Text::<_, align::x::Left, align::y::Top>::new(format!(
                 "Server uptime: {}   {}[{}]↑ {}[{}]↓   \
                  Session ratio: {:.2}, {}↑ {}↓   Lifetime ratio: {:.2}, {}↑ {}↓",
-                {
-                    let dur = Utc::now().signed_duration_since(self.server.started);
-                    let w = dur.num_weeks();
-                    let d = dur.num_days() - dur.num_weeks() * 7;
-                    let h = dur.num_hours() - dur.num_days() * 24;
-                    let m = dur.num_minutes() - dur.num_hours() * 60;
-                    let s = dur.num_seconds() - dur.num_minutes() * 60;
-                    let mut res = String::with_capacity(
-                        17 + if w == 0 {
-                            0
-                        } else {
-                            1 + (w as f32).log10().trunc() as usize
-                        },
-                    );
-                    if w > 0 {
-                        res += &*format!("{} w, ", w);
-                    }
-                    if d > 0 {
-                        res += &*format!("{} d, ", d);
-                    }
-                    res + &*format!("{:0>2}:{:0>2}:{:0>2}", h, m, s)
-                },
+                ::utils::date_diff_now(self.server.started),
                 self.server.rate_up.file_size(sopt::DECIMAL).unwrap(),
                 self.server
                     .throttle_up
@@ -902,7 +880,7 @@ impl Renderable for TorrentDetailsPanel {
     }
     fn render(&mut self, target: &mut Vec<u8>, width: u16, height: u16, x_off: u16, y_off: u16) {
         widgets::Text::<_, align::x::Left, align::y::Top>::new(format!(
-            "Status: {}{}    Sequential: {:?}    Created: {}    Modified: {}",
+            "Status: {}{}    Sequential: {:?}    Created: {} ago    Modified: {} ago",
             self.torr.status.as_str(),
             if let Some(ref err) = self.torr.error {
                 format!(": {}", err)
@@ -910,8 +888,8 @@ impl Renderable for TorrentDetailsPanel {
                 "".into()
             },
             self.torr.sequential,
-            self.torr.created,
-            self.torr.modified,
+            ::utils::date_diff_now(self.torr.created),
+            ::utils::date_diff_now(self.torr.modified),
         )).render(target, width, 1, x_off, y_off);
 
         widgets::Text::<_, align::x::Left, align::y::Top>::new(
