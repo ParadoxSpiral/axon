@@ -892,9 +892,29 @@ impl Renderable for TorrentDetailsPanel {
             ::utils::date_diff_now(self.torr.modified),
         )).render(target, width, 1, x_off, y_off);
 
-        widgets::Text::<_, align::x::Left, align::y::Top>::new(
-            format!("Path: {}", self.torr.path,),
-        ).render(target, width, 1, x_off, y_off + 1);
+        widgets::Text::<_, align::x::Left, align::y::Top>::new(format!(
+            "Rate up: {}[{}]    Rate down: {}[{}]    Upped: {}    Downed: {}",
+            self.torr.rate_up.file_size(sopt::DECIMAL).unwrap(),
+            self.torr
+                .throttle_up
+                .map(|t| if t == -1 {
+                    "∞".into()
+                } else {
+                    t.file_size(sopt::DECIMAL).unwrap()
+                })
+                .unwrap_or("∞".into()),
+            self.torr.rate_down.file_size(sopt::DECIMAL).unwrap(),
+            self.torr
+                .throttle_down
+                .map(|t| if t == -1 {
+                    "∞".into()
+                } else {
+                    t.file_size(sopt::DECIMAL).unwrap()
+                })
+                .unwrap_or("∞".into()),
+            self.torr.transferred_up.file_size(sopt::DECIMAL).unwrap(),
+            self.torr.transferred_down.file_size(sopt::DECIMAL).unwrap(),
+        )).render(target, width, 1, x_off, y_off + 1);
 
         widgets::Text::<_, align::x::Left, align::y::Top>::new(format!(
             "Size: {}    Progress: {}%    Availability: {}%    Priority: {}",
@@ -924,5 +944,9 @@ impl Renderable for TorrentDetailsPanel {
             self.torr.peers,
             self.torr.trackers,
         )).render(target, width, 1, x_off, y_off + 3);
+
+        widgets::Text::<_, align::x::Left, align::y::Top>::new(
+            format!("Path: {}", self.torr.path,),
+        ).render(target, width, 1, x_off, y_off + 4);
     }
 }
