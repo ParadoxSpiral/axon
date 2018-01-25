@@ -7,6 +7,7 @@ Note: Currently termion does not respect terminfo and uses ANSI color codes ([#1
 
 ## Keybindings
 - `^d` disconnects from the current server, and closes axon when in the login panel
+- `^j` runs a render pass (mainly useful if the terminal size got changed)
 - `H` switches panel focus left, `K` up, `L` right, `J` down. The lowercase variants may switch items
 - `\n` confirms an action, or engages focus
 - arrow keys switch items

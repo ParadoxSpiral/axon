@@ -120,6 +120,7 @@ impl View {
                 self.server_close(None);
                 InputResult::Rerender
             },
+            Key::Ctrl('l') => InputResult::Rerender,
             _ => {
                 let mut cnt = self.content.lock();
 
