@@ -66,7 +66,7 @@ impl<'v> RpcContext<'v> {
         RpcContext {
             socket: RefCell::new(None),
             waiter: {
-                let (s, r) = mpsc::channel(1);
+                let (s, r) = mpsc::channel(2);
                 (RefCell::new(s), RefCell::new(r))
             },
             serial: AtomicUsize::new(0),
@@ -76,7 +76,8 @@ impl<'v> RpcContext<'v> {
     }
 
     pub fn init(&self, mut srv: Url, pass: &str) -> Result<(), String> {
-        #[cfg(feature="dbg")] trace!(*::S_RPC, "Initiating ctx");
+        #[cfg(feature = "dbg")]
+        trace!(*::S_RPC, "Initiating ctx");
         let url = srv.query_pairs_mut().append_pair("password", pass).finish();
         let (sink, mut stream) = {
             let mut core = self.core.borrow_mut();
@@ -94,7 +95,8 @@ impl<'v> RpcContext<'v> {
                 _ => unreachable!(),
             }
         };
-        #[cfg(feature="dbg")] trace!(*::S_RPC, "Initiated ctx");
+        #[cfg(feature = "dbg")]
+        trace!(*::S_RPC, "Initiated ctx");
 
         if let OwnedMessage::Text(msg) = stream
             .by_ref()
@@ -123,17 +125,20 @@ impl<'v> RpcContext<'v> {
     }
 
     pub fn wake(&self) {
-        #[cfg(feature="dbg")] debug!(*::S_RPC, "Should wake");
+        #[cfg(feature = "dbg")]
+        debug!(*::S_RPC, "Should wake");
         self.waiter.0.borrow_mut().try_send(()).unwrap();
     }
 
     pub fn next_serial(&self) -> u64 {
-        #[cfg(feature="dbg")] trace!(*::S_RPC, "Inc serial");
+        #[cfg(feature = "dbg")]
+        trace!(*::S_RPC, "Inc serial");
         self.serial.fetch_add(1, Ordering::AcqRel) as _
     }
 
     pub fn send(&self, msg: CMessage) {
-        #[cfg(feature="dbg")] debug!(*::S_RPC, "Sending {:#?}", msg);
+        #[cfg(feature = "dbg")]
+        debug!(*::S_RPC, "Sending {:#?}", msg);
         match serde_json::to_string(&msg) {
             Err(e) => self.view.global_err(format!("{}", e.description())),
             Ok(msg) => self.send_raw(OwnedMessage::Text(msg)),
@@ -157,84 +162,99 @@ impl<'v> RpcContext<'v> {
         // Each iteration represents the lifetime of a connection to a server
         loop {
             // Wait for initialization
-            #[cfg(feature="dbg")] debug!(*::S_RPC, "Waiting for init");
+            #[cfg(feature = "dbg")]
+            debug!(*::S_RPC, "Waiting for init");
             waiter.by_ref().wait().next().unwrap().unwrap();
 
-            // Check if exited before login
-            let socket = self.socket.borrow();
-            if socket.is_none() {
-                #[cfg(feature="dbg")] debug!(*::S_RPC, "Quit before login");
-                return;
+            // This scope limits the socket borrow
+            {
+                // Check if exited before login
+                let socket = self.socket.borrow();
+                if socket.is_none() {
+                    #[cfg(feature = "dbg")]
+                    debug!(*::S_RPC, "Quit before login");
+                    return;
+                }
+
+                let mut core = self.core.borrow_mut();
+                let socket = socket.as_ref().unwrap();
+                let mut stream = socket.0.borrow_mut();
+
+                let msg_handler = stream
+                    .by_ref()
+                    .map(|msg| StreamRes::Msg(msg))
+                    .map_err(|err| format!("{:?}", err))
+                    .select(
+                        waiter
+                            .by_ref()
+                            .map(|_| StreamRes::Close)
+                            .map_err(|err| format!("{:?}", err)),
+                    )
+                    .or_else(|e| future::err(self.view.global_err(e)))
+                    .and_then(|res| match res {
+                        StreamRes::Msg(msg) => match msg {
+                            OwnedMessage::Ping(p) => {
+                                #[cfg(feature = "dbg")]
+                                trace!(*::S_RPC, "Pinged");
+                                self.send_raw(OwnedMessage::Pong(p));
+                                future::ok(())
+                            }
+                            OwnedMessage::Close(data) => {
+                                #[cfg(feature = "dbg")]
+                                debug!(*::S_RPC, "Server closed: {:?}", data);
+                                self.view.server_close(data);
+                                future::err(())
+                            }
+                            OwnedMessage::Text(s) => {
+                                match serde_json::from_str::<SMessage>(&s) {
+                                    Err(e) => self.view.global_err(format!("{}", e.description())),
+                                    Ok(msg) => if let SMessage::ResourcesExtant {
+                                        ref ids, ..
+                                    } = msg
+                                    {
+                                        let ids: Vec<_> =
+                                            ids.iter().map(|id| id.clone().into_owned()).collect();
+
+                                        self.send(CMessage::Subscribe {
+                                            serial: self.next_serial(),
+                                            ids: ids.clone(),
+                                        });
+                                    } else if let SMessage::ResourcesRemoved { ref ids, .. } = msg {
+                                        #[cfg(feature = "dbg")]
+                                        debug!(*::S_RPC, "Received: {:#?}", msg);
+                                        self.send(CMessage::Unsubscribe {
+                                            serial: self.next_serial(),
+                                            ids: ids.clone(),
+                                        });
+
+                                        self.view.handle_rpc(self, &msg);
+                                    } else {
+                                        #[cfg(feature = "dbg")]
+                                        debug!(*::S_RPC, "Received: {:#?}", msg);
+                                        self.view.handle_rpc(self, &msg);
+                                    },
+                                };
+                                future::ok(())
+                            }
+                            _ => unreachable!(),
+                        },
+                        StreamRes::Close => future::err(()),
+                    });
+
+                // Wait until the stream is, or should be, terminated
+                #[cfg(feature = "dbg")]
+                debug!(*::S_RPC, "Running stream handler");
+                let _ = core.run(msg_handler.for_each(|_| Ok(())));
             }
 
-            let mut core = self.core.borrow_mut();
-            let socket = socket.as_ref().unwrap();
-            let mut stream = socket.0.borrow_mut();
-
-            let msg_handler = stream
-                .by_ref()
-                .map(|msg| StreamRes::Msg(msg))
-                .map_err(|err| format!("{:?}", err))
-                .select(
-                    waiter
-                        .by_ref()
-                        .map(|_| StreamRes::Close)
-                        .map_err(|err| format!("{:?}", err)),
-                )
-                .or_else(|e| future::err(self.view.global_err(e)))
-                .and_then(|res| match res {
-                    StreamRes::Msg(msg) => match msg {
-                        OwnedMessage::Ping(p) => {
-                            #[cfg(feature="dbg")] trace!(*::S_RPC, "Pinged");
-                            self.send_raw(OwnedMessage::Pong(p));
-                            future::ok(())
-                        }
-                        OwnedMessage::Close(data) => {
-                            #[cfg(feature="dbg")] debug!(*::S_RPC, "Server closed: {:?}", data);
-                            self.view.server_close(data);
-                            future::err(())
-                        }
-                        OwnedMessage::Text(s) => {
-                            match serde_json::from_str::<SMessage>(&s) {
-                                Err(e) => self.view.global_err(format!("{}", e.description())),
-                                Ok(msg) => if let SMessage::ResourcesExtant { ref ids, .. } = msg {
-                                    let ids: Vec<_> =
-                                        ids.iter().map(|id| id.clone().into_owned()).collect();
-
-                                    self.send(CMessage::Subscribe {
-                                        serial: self.next_serial(),
-                                        ids: ids.clone(),
-                                    });
-                                } else if let SMessage::ResourcesRemoved { ref ids, .. } = msg {
-                                    #[cfg(feature="dbg")] debug!(*::S_RPC, "Received: {:#?}", msg);
-                                    self.send(CMessage::Unsubscribe {
-                                        serial: self.next_serial(),
-                                        ids: ids.clone(),
-                                    });
-
-                                    self.view.handle_rpc(self, &msg);
-                                } else {
-                                    #[cfg(feature="dbg")] debug!(*::S_RPC, "Received: {:#?}", msg);
-                                    self.view.handle_rpc(self, &msg);
-                                },
-                            };
-                            future::ok(())
-                        }
-                        _ => unreachable!(),
-                    },
-                    StreamRes::Close => future::err(()),
-                });
-
-            // Wait until the stream is, or should be, terminated
-            #[cfg(feature="dbg")] debug!(*::S_RPC, "Running stream handler");
-            let _ = core.run(msg_handler.for_each(|_| Ok(())));
-
             if ::RUNNING.load(Ordering::Acquire) {
-                drop(socket);
+                #[cfg(feature = "dbg")]
+                info!(*::S_RPC, "Rejiggering for new server");
                 *self.socket.borrow_mut() = None;
                 continue;
             } else {
-                #[cfg(feature="dbg")] info!(*::S_RPC, "Terminating RPC");
+                #[cfg(feature = "dbg")]
+                info!(*::S_RPC, "Terminating RPC");
                 break;
             }
         }

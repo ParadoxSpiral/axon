@@ -33,14 +33,13 @@ extern crate unicode_width;
 extern crate url;
 extern crate websocket;
 
-#[cfg(feature="dbg")]
-#[cfg_attr(feature="dbg", macro_use)]
+#[cfg(feature = "dbg")]
+#[cfg_attr(feature = "dbg", macro_use)]
 extern crate slog;
-#[cfg(feature="dbg")]
-extern crate slog_term;
-#[cfg(feature="dbg")]
+#[cfg(feature = "dbg")]
 extern crate slog_async;
-
+#[cfg(feature = "dbg")]
+extern crate slog_term;
 
 mod rpc;
 pub mod utils;
@@ -58,7 +57,7 @@ use view::tui::InputResult;
 lazy_static!(
     static ref RUNNING: AtomicBool = AtomicBool::new(true);
 );
-#[cfg(feature="dbg")]
+#[cfg(feature = "dbg")]
 lazy_static!(
     static ref SLOG_ROOT: slog::Logger = {
         use slog::Drain;
@@ -89,27 +88,32 @@ fn main() {
     crossbeam::scope(|scope| {
         // View worker
         scope.spawn(|| {
-            #[cfg(feature="dbg")] trace!(*S_VIEW, "Entering loop");
+            #[cfg(feature = "dbg")]
+            trace!(*S_VIEW, "Entering loop");
             view.render_until_death();
         });
 
         // rpc worker
         scope.spawn(|| {
-            #[cfg(feature="dbg")] trace!(*S_RPC, "Entering loop");
+            #[cfg(feature = "dbg")]
+            trace!(*S_RPC, "Entering loop");
             rpc.recv_until_death();
         });
 
         // Input worker
         scope.spawn(|| {
             let stdin = io::stdin();
-            #[cfg(feature="dbg")] trace!(*S_IO, "Entering loop");
+            #[cfg(feature = "dbg")]
+            trace!(*S_IO, "Entering loop");
             for ev in stdin.lock().keys() {
                 let res = if let Ok(k) = ev {
                     // Pass input through components
-                    #[cfg(feature="dbg")] debug!(*S_IO, "Handling {:?}", k);
+                    #[cfg(feature = "dbg")]
+                    debug!(*S_IO, "Handling {:?}", k);
                     view.handle_input(&rpc, k)
                 } else {
-                    #[cfg(feature="dbg")] crit!(*S_IO, "Fatal error: {}", ev.as_ref().unwrap_err());
+                    #[cfg(feature = "dbg")]
+                    crit!(*S_IO, "Fatal error: {}", ev.as_ref().unwrap_err());
                     RUNNING.store(false, Ordering::Release);
                     rpc.wake();
                     view.wake();
@@ -118,7 +122,8 @@ fn main() {
 
                 match res {
                     InputResult::Close => {
-                    #[cfg(feature="dbg")] debug!(*S_IO, "Closing");
+                        #[cfg(feature = "dbg")]
+                        debug!(*S_IO, "Closing");
                         RUNNING.store(false, Ordering::Release);
                         rpc.wake();
                         view.wake();
