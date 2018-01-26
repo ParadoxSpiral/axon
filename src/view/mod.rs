@@ -82,7 +82,7 @@ impl View {
                 }
                 DisplayState::GlobalErr(ref err, ref mut cmp) => {
                     widgets::BorrowedOverlay::new(
-                        &mut widgets::Text::<_, align::x::Center, align::y::Top>::new(&**err),
+                        &mut widgets::Text::<_, align::x::Center, align::y::Top>::new(true, &**err),
                         &mut **cmp,
                         (err.len() as u16 + 2, 1),
                         Some(&termion::color::Red),

@@ -184,7 +184,7 @@ impl HandleInput for LoginPanel {
                 let len = err.len();
                 let overlay = Box::new(widgets::OwnedOverlay::new(
                     widgets::CloseOnInput::new(widgets::IgnoreRpc::new(
-                        widgets::Text::<_, align::x::Center, align::y::Top>::new(err),
+                        widgets::Text::<_, align::x::Center, align::y::Top>::new(true, err),
                     )),
                     Box::new(widgets::IgnoreRpcPassInput::new(self.clone())),
                     (len as u16 + 2, 1),
@@ -535,18 +535,24 @@ impl Renderable for MainPanel {
                     ),
                     _ => ("".into(), "".into()),
                 };
-                widgets::Text::<_, align::x::Left, align::y::Top>::new(format!(
-                    "{}{}{}",
-                    c_s,
-                    &**t.name.as_ref().unwrap_or_else(|| &t.path),
-                    c_e
-                )).render(target, width, 1, x, y + i as u16);
+                widgets::Text::<_, align::x::Left, align::y::Top>::new(
+                    true,
+                    format!(
+                        "{}{}{}",
+                        c_s,
+                        &**t.name.as_ref().unwrap_or_else(|| &t.path),
+                        c_e
+                    ),
+                ).render(target, width, 1, x, y + i as u16);
             }
             if self.filter.0 {
-                widgets::Text::<_, align::x::Left, align::y::Top>::new(match self.focus {
-                    Focus::Filter => self.filter.1.format(true),
-                    _ => self.filter.1.format(false),
-                }).render(target, width, 1, x, height);
+                widgets::Text::<_, align::x::Left, align::y::Top>::new(
+                    true,
+                    match self.focus {
+                        Focus::Filter => self.filter.1.format(true),
+                        _ => self.filter.1.format(false),
+                    },
+                ).render(target, width, 1, x, height);
             }
         };
         let draw_trackers = |target: &mut _, width, height, x, y| {
@@ -616,16 +622,19 @@ impl Renderable for MainPanel {
                 } else {
                     ("".into(), "".into())
                 };
-                widgets::Text::<_, align::x::Left, align::y::Top>::new(format!(
-                    "{}({}) {}{}",
-                    c_s,
-                    count,
-                    t.url
-                        .as_ref()
-                        .map(|u| u.host_str().unwrap())
-                        .unwrap_or_else(|| "?.?"),
-                    c_e,
-                )).render(target, width, 1, x, y + i as u16);
+                widgets::Text::<_, align::x::Left, align::y::Top>::new(
+                    true,
+                    format!(
+                        "{}({}) {}{}",
+                        c_s,
+                        ids.len() + 1,
+                        t.url
+                            .as_ref()
+                            .map(|u| u.host_str().unwrap())
+                            .unwrap_or_else(|| "?.?"),
+                        c_e,
+                    ),
+                ).render(target, width, 1, x, y + i as u16);
             }
         };
         let draw_details = |target: &mut _, width, height, x, y| {
@@ -642,52 +651,56 @@ impl Renderable for MainPanel {
             widgets::Tabs::new(ts, self.details.0).render(target, width, height, x, y);
         };
         let draw_footer = |target: &mut _, width, height, x, y| {
-            widgets::Text::<_, align::x::Left, align::y::Top>::new(format!(
-                "Server uptime: {}   {}[{}]↑ {}[{}]↓   \
-                 Session ratio: {:.2}, {}↑ {}↓   Lifetime ratio: {:.2}, {}↑ {}↓",
-                ::utils::date_diff_now(self.server.started),
-                self.server.rate_up.file_size(sopt::DECIMAL).unwrap(),
-                self.server
-                    .throttle_up
-                    .map(|t| if t == -1 {
-                        "∞".into()
+            widgets::Text::<_, align::x::Left, align::y::Top>::new(
+                true,
+                format!(
+                    "Server uptime: {}   {}[{}]↑ {}[{}]↓   \
+                     Session ratio: {:.2}, {}↑ {}↓   Lifetime ratio: {:.2}, {}↑ {}↓",
+                    ::utils::date_diff_now(self.server.started),
+                    self.server.rate_up.file_size(sopt::DECIMAL).unwrap(),
+                    self.server
+                        .throttle_up
+                        .map(|t| if t == -1 {
+                            "∞".into()
+                        } else {
+                            t.file_size(sopt::DECIMAL).unwrap()
+                        })
+                        .unwrap_or("∞".into()),
+                    self.server.rate_down.file_size(sopt::DECIMAL).unwrap(),
+                    self.server
+                        .throttle_down
+                        .map(|t| if t == -1 {
+                            "∞".into()
+                        } else {
+                            t.file_size(sopt::DECIMAL).unwrap()
+                        })
+                        .unwrap_or("∞".into()),
+                    if self.server.ses_transferred_down == 0 {
+                        1.
                     } else {
-                        t.file_size(sopt::DECIMAL).unwrap()
-                    })
-                    .unwrap_or("∞".into()),
-                self.server.rate_down.file_size(sopt::DECIMAL).unwrap(),
-                self.server
-                    .throttle_down
-                    .map(|t| if t == -1 {
-                        "∞".into()
+                        self.server.ses_transferred_up as f32
+                            / self.server.ses_transferred_down as f32
+                    },
+                    self.server
+                        .ses_transferred_up
+                        .file_size(sopt::DECIMAL)
+                        .unwrap(),
+                    self.server
+                        .ses_transferred_down
+                        .file_size(sopt::DECIMAL)
+                        .unwrap(),
+                    if self.server.transferred_down == 0 {
+                        1.
                     } else {
-                        t.file_size(sopt::DECIMAL).unwrap()
-                    })
-                    .unwrap_or("∞".into()),
-                if self.server.ses_transferred_down == 0 {
-                    1.
-                } else {
-                    self.server.ses_transferred_up as f32 / self.server.ses_transferred_down as f32
-                },
-                self.server
-                    .ses_transferred_up
-                    .file_size(sopt::DECIMAL)
-                    .unwrap(),
-                self.server
-                    .ses_transferred_down
-                    .file_size(sopt::DECIMAL)
-                    .unwrap(),
-                if self.server.transferred_down == 0 {
-                    1.
-                } else {
-                    self.server.transferred_up as f32 / self.server.transferred_down as f32
-                },
-                self.server.transferred_up.file_size(sopt::DECIMAL).unwrap(),
-                self.server
-                    .transferred_down
-                    .file_size(sopt::DECIMAL)
-                    .unwrap(),
-            )).render(target, width, height, x, y);
+                        self.server.transferred_up as f32 / self.server.transferred_down as f32
+                    },
+                    self.server.transferred_up.file_size(sopt::DECIMAL).unwrap(),
+                    self.server
+                        .transferred_down
+                        .file_size(sopt::DECIMAL)
+                        .unwrap(),
+                ),
+            ).render(target, width, height, x, y);
         };
 
         match (self.trackers_displ, self.details.1.is_empty()) {
@@ -879,73 +892,86 @@ impl Renderable for TorrentDetailsPanel {
             .clone()
     }
     fn render(&mut self, target: &mut Vec<u8>, width: u16, height: u16, x_off: u16, y_off: u16) {
-        widgets::Text::<_, align::x::Left, align::y::Top>::new(format!(
-            "Status: {}{}    Sequential: {:?}    Created: {} ago    Modified: {} ago",
-            self.torr.status.as_str(),
-            if let Some(ref err) = self.torr.error {
-                format!(": {}", err)
-            } else {
-                "".into()
-            },
-            self.torr.sequential,
-            ::utils::date_diff_now(self.torr.created),
-            ::utils::date_diff_now(self.torr.modified),
-        )).render(target, width, 1, x_off, y_off);
-
-        widgets::Text::<_, align::x::Left, align::y::Top>::new(format!(
-            "Rate up: {}[{}]    Rate down: {}[{}]    Upped: {}    Downed: {}",
-            self.torr.rate_up.file_size(sopt::DECIMAL).unwrap(),
-            self.torr
-                .throttle_up
-                .map(|t| if t == -1 {
-                    "∞".into()
+        widgets::Text::<_, align::x::Left, align::y::Top>::new(
+            true,
+            format!(
+                "Status: {}{}    Sequential: {:?}    Created: {} ago    Modified: {} ago",
+                self.torr.status.as_str(),
+                if let Some(ref err) = self.torr.error {
+                    format!(": {}", err)
                 } else {
-                    t.file_size(sopt::DECIMAL).unwrap()
-                })
-                .unwrap_or("∞".into()),
-            self.torr.rate_down.file_size(sopt::DECIMAL).unwrap(),
-            self.torr
-                .throttle_down
-                .map(|t| if t == -1 {
-                    "∞".into()
-                } else {
-                    t.file_size(sopt::DECIMAL).unwrap()
-                })
-                .unwrap_or("∞".into()),
-            self.torr.transferred_up.file_size(sopt::DECIMAL).unwrap(),
-            self.torr.transferred_down.file_size(sopt::DECIMAL).unwrap(),
-        )).render(target, width, 1, x_off, y_off + 1);
-
-        widgets::Text::<_, align::x::Left, align::y::Top>::new(format!(
-            "Size: {}    Progress: {}%    Availability: {}%    Priority: {}",
-            self.torr
-                .size
-                .map(|p| p.file_size(sopt::DECIMAL).unwrap())
-                .unwrap_or("?".into()),
-            (self.torr.progress * 100.).round(),
-            (self.torr.availability * 100.).round(),
-            self.torr.priority,
-        )).render(target, width, 1, x_off, y_off + 2);
-
-        widgets::Text::<_, align::x::Left, align::y::Top>::new(format!(
-            "Files: {}    Pieces: {}    P-size: {}    Peers: {}    Trackers: {}",
-            self.torr
-                .files
-                .map(|f| format!("{}", f))
-                .unwrap_or("?".into()),
-            self.torr
-                .pieces
-                .map(|p| format!("{}", p))
-                .unwrap_or("?".into()),
-            self.torr
-                .piece_size
-                .map(|p| p.file_size(sopt::DECIMAL).unwrap())
-                .unwrap_or("?".into()),
-            self.torr.peers,
-            self.torr.trackers,
-        )).render(target, width, 1, x_off, y_off + 3);
+                    "".into()
+                },
+                self.torr.sequential,
+                ::utils::date_diff_now(self.torr.created),
+                ::utils::date_diff_now(self.torr.modified),
+            ),
+        ).render(target, width, 1, x_off, y_off);
 
         widgets::Text::<_, align::x::Left, align::y::Top>::new(
+            true,
+            format!(
+                "Rate up: {}[{}]    Rate down: {}[{}]    Upped: {}    Downed: {}",
+                self.torr.rate_up.file_size(sopt::DECIMAL).unwrap(),
+                self.torr
+                    .throttle_up
+                    .map(|t| if t == -1 {
+                        "∞".into()
+                    } else {
+                        t.file_size(sopt::DECIMAL).unwrap()
+                    })
+                    .unwrap_or("∞".into()),
+                self.torr.rate_down.file_size(sopt::DECIMAL).unwrap(),
+                self.torr
+                    .throttle_down
+                    .map(|t| if t == -1 {
+                        "∞".into()
+                    } else {
+                        t.file_size(sopt::DECIMAL).unwrap()
+                    })
+                    .unwrap_or("∞".into()),
+                self.torr.transferred_up.file_size(sopt::DECIMAL).unwrap(),
+                self.torr.transferred_down.file_size(sopt::DECIMAL).unwrap(),
+            ),
+        ).render(target, width, 1, x_off, y_off + 1);
+
+        widgets::Text::<_, align::x::Left, align::y::Top>::new(
+            true,
+            format!(
+                "Size: {}    Progress: {}%    Availability: {}%    Priority: {}",
+                self.torr
+                    .size
+                    .map(|p| p.file_size(sopt::DECIMAL).unwrap())
+                    .unwrap_or("?".into()),
+                (self.torr.progress * 100.).round(),
+                (self.torr.availability * 100.).round(),
+                self.torr.priority,
+            ),
+        ).render(target, width, 1, x_off, y_off + 2);
+
+        widgets::Text::<_, align::x::Left, align::y::Top>::new(
+            true,
+            format!(
+                "Files: {}    Pieces: {}    P-size: {}    Peers: {}    Trackers: {}",
+                self.torr
+                    .files
+                    .map(|f| format!("{}", f))
+                    .unwrap_or("?".into()),
+                self.torr
+                    .pieces
+                    .map(|p| format!("{}", p))
+                    .unwrap_or("?".into()),
+                self.torr
+                    .piece_size
+                    .map(|p| p.file_size(sopt::DECIMAL).unwrap())
+                    .unwrap_or("?".into()),
+                self.torr.peers,
+                self.torr.trackers,
+            ),
+        ).render(target, width, 1, x_off, y_off + 3);
+
+        widgets::Text::<_, align::x::Left, align::y::Top>::new(
+            true,
             format!("Path: {}", self.torr.path,),
         ).render(target, width, 1, x_off, y_off + 4);
     }

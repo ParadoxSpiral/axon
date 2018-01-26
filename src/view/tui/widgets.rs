@@ -243,44 +243,55 @@ impl Renderable for Tabs {
         }
     }
     fn render(&mut self, target: &mut Vec<u8>, width: u16, height: u16, x_off: u16, y_off: u16) {
-        // Draw header
-        let n_tabs = self.tabs.len() as u16;
-        // Compensate for uneven width
-        let compensate = if (width as f32 / n_tabs as f32) % 2. != 0. {
-            true
-        } else {
-            false
-        };
-        for (i, t) in self.tabs.iter().enumerate() {
-            let name = t.name();
-            let name_l = utils::count_without_styling(&name) as u16;
-            let x_off = x_off + i as u16 * (width / n_tabs);
-            let sep = if width / n_tabs < name_l {
-                "".into()
-            } else {
-                (0..(width / n_tabs - name_l) / 2).fold("".to_owned(), |acc, _| acc + "─")
-            };
-            let sep_l = utils::count_without_styling(&sep) as u16;
+        write!(target, "{}", cursor::Goto(x_off, y_off)).unwrap();
 
-            write!(target, "{}{}", cursor::Goto(x_off, y_off), sep).unwrap();
-            if self.active_idx == i {
-                write!(target, "{}", color::Fg(color::Cyan)).unwrap();
-            }
-            Text::<_, align::x::Left, align::y::Top>::new(name).render(
+        // Draw header
+        let n_tabs = self.tabs.len();
+        let sec_len = width / n_tabs as u16;
+        // FIXME: NLL (probably)
+        let div_budget = "─".repeat(
+            (width.saturating_sub(
+                self.tabs
+                    .iter()
+                    .fold(0, |acc, t| acc + utils::count_without_styling(&t.name())),
+            ) as usize),
+        );
+        let mut div_budget = div_budget.chars();
+        let div_budget = div_budget.by_ref();
+        for (i, t) in self.tabs.iter().enumerate() {
+            let div_len = sec_len.saturating_sub(utils::count_without_styling(&t.name())) / 2;
+            write!(
                 target,
-                width / n_tabs - sep_l,
+                "{}{}",
+                if self.active_idx == i {
+                    format!("{}", color::Fg(color::Cyan))
+                } else {
+                    "".to_owned()
+                },
+                div_budget.take(div_len as usize + 1).collect::<String>(),
+            ).unwrap();
+            Text::<_, align::x::Left, align::y::Top>::new(false, t.name()).render(
+                target,
+                // FIXME: Width too small if content truncated
+                sec_len,
                 1,
-                x_off + sep_l,
+                x_off + i as u16 * sec_len + div_len + 1,
                 y_off,
             );
-            if self.active_idx == i {
-                write!(target, "{}", color::Fg(color::Reset)).unwrap();
-            }
-            if compensate && i + 1 == n_tabs as usize {
-                write!(target, "{}─", sep).unwrap();
-            } else {
-                write!(target, "{}", sep).unwrap();
-            }
+            write!(
+                target,
+                "{}{}",
+                if i + 1 == self.tabs.len() {
+                    div_budget.as_str().to_owned()
+                } else {
+                    div_budget.take(div_len as usize + 1).collect()
+                },
+                if self.active_idx == i {
+                    format!("{}", color::Fg(color::Reset))
+                } else {
+                    "".to_owned()
+                },
+            ).unwrap();
         }
 
         // Draw active component
@@ -548,6 +559,7 @@ where
     AX: x::Align,
     AY: y::Align,
 {
+    do_goto: bool,
     content: T,
     _align_x: PhantomData<AX>,
     _align_y: PhantomData<AY>,
@@ -559,13 +571,24 @@ where
     AX: x::Align,
     AY: y::Align,
 {
-    pub fn new(t: T) -> Text<T, AX, AY> {
+    pub fn new(do_goto: bool, t: T) -> Text<T, AX, AY> {
         Text {
+            do_goto,
             content: t,
             _align_x: PhantomData,
             _align_y: PhantomData,
         }
     }
+}
+
+macro_rules! do_write {
+    ($target:expr, $x_off:expr, $y_off:expr, $lit1:expr, $lit2:expr, $ct:expr, $do_goto:expr) => (
+        if $do_goto {
+            write!($target, $lit1, cursor::Goto($x_off, $y_off), $ct).unwrap();
+        } else {
+            write!($target, $lit2, $ct).unwrap();
+        }
+    )
 }
 
 impl<T, AX, AY> Renderable for Text<T, AX, AY>
@@ -591,7 +614,7 @@ where
         let len = utils::count_without_styling(content);
 
         if width >= len as u16 {
-            write!(target, "{}{}", cursor::Goto(x_off, y_off), content).unwrap();
+            do_write!(target, x_off, y_off, "{}{}", "{}", content, self.do_goto);
         } else {
             let mut chunks = content
                 .graphemes(true)
@@ -678,28 +701,45 @@ where
                     if utils::count_without_styling(n_chunk) > 1 {
                         if i + 1 >= height {
                             // Truncate
-                            write!(target, "{}{}…", cursor::Goto(x_off, y_off + i), chunk)
-                                .unwrap();
+                            do_write!(
+                                target,
+                                x_off,
+                                y_off + i,
+                                "{}{}…",
+                                "{}…",
+                                chunk,
+                                self.do_goto
+                            );
                             break;
                         } else {
                             // Wrap
-                            write!(target, "{}{}-", cursor::Goto(x_off, y_off + i), chunk).unwrap();
+                            do_write!(
+                                target,
+                                x_off,
+                                y_off + i,
+                                "{}{}-",
+                                "{}-",
+                                chunk,
+                                self.do_goto
+                            );
                         }
                         i += 1;
                     } else {
                         // Next chunk is small and the last chunk, needs no new line
-                        write!(
+                        do_write!(
                             target,
-                            "{}{}{}",
-                            cursor::Goto(x_off, y_off + 1),
-                            chunk,
-                            n_chunk
-                        ).unwrap();
+                            x_off,
+                            y_off + 1,
+                            "{}{}",
+                            "{}",
+                            format!("{}{}", chunk, n_chunk),
+                            self.do_goto
+                        );
                         break;
                     }
                 } else {
                     // Last chunk
-                    write!(target, "{}{}", cursor::Goto(x_off, y_off + 1), chunk).unwrap();
+                    do_write!(target, x_off, y_off + 1, "{}{}", "{}", chunk, self.do_goto);
                     break;
                 }
             }

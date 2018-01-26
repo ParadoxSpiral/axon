@@ -109,7 +109,7 @@ use rpc::RpcContext;
 use view::tui::widgets;
 
 // FIXME: Wide/Half chars, unicode-width only works for CJK iirc
-pub fn count_without_styling(l: &str) -> usize {
+pub fn count_without_styling(l: &str) -> u16 {
     let mut count = 0;
     let mut gs = l.graphemes(true).map(|g| (g, g.width()));
 
@@ -125,7 +125,7 @@ pub fn count_without_styling(l: &str) -> usize {
         }
     }
 
-    count
+    count as u16
 }
 
 pub fn count(l: &str) -> usize {
