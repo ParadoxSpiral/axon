@@ -655,7 +655,7 @@ impl Renderable for MainPanel {
                 true,
                 format!(
                     "Server uptime: {}   {}[{}]↑ {}[{}]↓   \
-                     Session ratio: {:.2}, {}↑ {}↓   Lifetime ratio: {:.2}, {}↑ {}↓",
+                     Session: {:.2}, {}↑ {}↓   Lifetime: {:.2}, {}↑ {}↓",
                     ::utils::date_diff_now(self.server.started),
                     self.server.rate_up.file_size(sopt::DECIMAL).unwrap(),
                     self.server
@@ -892,87 +892,101 @@ impl Renderable for TorrentDetailsPanel {
             .clone()
     }
     fn render(&mut self, target: &mut Vec<u8>, width: u16, height: u16, x_off: u16, y_off: u16) {
-        widgets::Text::<_, align::x::Left, align::y::Top>::new(
-            true,
-            format!(
-                "Status: {}{}    Sequential: {:?}    Created: {} ago    Modified: {} ago",
-                self.torr.status.as_str(),
-                if let Some(ref err) = self.torr.error {
-                    format!(": {}", err)
-                } else {
-                    "".into()
-                },
-                self.torr.sequential,
-                ::utils::date_diff_now(self.torr.created),
-                ::utils::date_diff_now(self.torr.modified),
-            ),
-        ).render(target, width, 1, x_off, y_off);
-
-        widgets::Text::<_, align::x::Left, align::y::Top>::new(
-            true,
-            format!(
-                "Rate up: {}[{}]    Rate down: {}[{}]    Upped: {}    Downed: {}",
-                self.torr.rate_up.file_size(sopt::DECIMAL).unwrap(),
-                self.torr
-                    .throttle_up
-                    .map(|t| if t == -1 {
-                        "∞".into()
+        if height >= 1 {
+            widgets::Text::<_, align::x::Left, align::y::Top>::new(
+                true,
+                format!(
+                    "{}{}    {}    Created: {} ago    Modified: {} ago",
+                    self.torr.status.as_str(),
+                    if let Some(ref err) = self.torr.error {
+                        format!(": {}", err)
                     } else {
-                        t.file_size(sopt::DECIMAL).unwrap()
-                    })
-                    .unwrap_or("∞".into()),
-                self.torr.rate_down.file_size(sopt::DECIMAL).unwrap(),
-                self.torr
-                    .throttle_down
-                    .map(|t| if t == -1 {
-                        "∞".into()
+                        "".into()
+                    },
+                    if self.torr.sequential {
+                        "Sequential"
                     } else {
-                        t.file_size(sopt::DECIMAL).unwrap()
-                    })
-                    .unwrap_or("∞".into()),
-                self.torr.transferred_up.file_size(sopt::DECIMAL).unwrap(),
-                self.torr.transferred_down.file_size(sopt::DECIMAL).unwrap(),
-            ),
-        ).render(target, width, 1, x_off, y_off + 1);
+                        "No order"
+                    },
+                    ::utils::date_diff_now(self.torr.created),
+                    ::utils::date_diff_now(self.torr.modified),
+                ),
+            ).render(target, width, 1, x_off, y_off);
+        }
 
-        widgets::Text::<_, align::x::Left, align::y::Top>::new(
-            true,
-            format!(
-                "Size: {}    Progress: {}%    Availability: {}%    Priority: {}",
-                self.torr
-                    .size
-                    .map(|p| p.file_size(sopt::DECIMAL).unwrap())
-                    .unwrap_or("?".into()),
-                (self.torr.progress * 100.).round(),
-                (self.torr.availability * 100.).round(),
-                self.torr.priority,
-            ),
-        ).render(target, width, 1, x_off, y_off + 2);
+        if height >= 2 {
+            widgets::Text::<_, align::x::Left, align::y::Top>::new(
+                true,
+                format!(
+                    "Rate up: {}[{}]    Rate down: {}[{}]    Upped: {}    Downed: {}",
+                    self.torr.rate_up.file_size(sopt::DECIMAL).unwrap(),
+                    self.torr
+                        .throttle_up
+                        .map(|t| if t == -1 {
+                            "∞".into()
+                        } else {
+                            t.file_size(sopt::DECIMAL).unwrap()
+                        })
+                        .unwrap_or("srv".into()),
+                    self.torr.rate_down.file_size(sopt::DECIMAL).unwrap(),
+                    self.torr
+                        .throttle_down
+                        .map(|t| if t == -1 {
+                            "∞".into()
+                        } else {
+                            t.file_size(sopt::DECIMAL).unwrap()
+                        })
+                        .unwrap_or("srv".into()),
+                    self.torr.transferred_up.file_size(sopt::DECIMAL).unwrap(),
+                    self.torr.transferred_down.file_size(sopt::DECIMAL).unwrap(),
+                ),
+            ).render(target, width, 1, x_off, y_off + 1);
+        }
 
-        widgets::Text::<_, align::x::Left, align::y::Top>::new(
-            true,
-            format!(
-                "Files: {}    Pieces: {}    P-size: {}    Peers: {}    Trackers: {}",
-                self.torr
-                    .files
-                    .map(|f| format!("{}", f))
-                    .unwrap_or("?".into()),
-                self.torr
-                    .pieces
-                    .map(|p| format!("{}", p))
-                    .unwrap_or("?".into()),
-                self.torr
-                    .piece_size
-                    .map(|p| p.file_size(sopt::DECIMAL).unwrap())
-                    .unwrap_or("?".into()),
-                self.torr.peers,
-                self.torr.trackers,
-            ),
-        ).render(target, width, 1, x_off, y_off + 3);
+        if height >= 3 {
+            widgets::Text::<_, align::x::Left, align::y::Top>::new(
+                true,
+                format!(
+                    "Size: {}    Progress: {}%    Availability: {}%    Priority: {}",
+                    self.torr
+                        .size
+                        .map(|p| p.file_size(sopt::DECIMAL).unwrap())
+                        .unwrap_or("?".into()),
+                    (self.torr.progress * 100.).round(),
+                    (self.torr.availability * 100.).round(),
+                    self.torr.priority,
+                ),
+            ).render(target, width, 1, x_off, y_off + 2);
+        }
 
-        widgets::Text::<_, align::x::Left, align::y::Top>::new(
-            true,
-            format!("Path: {}", self.torr.path,),
-        ).render(target, width, 1, x_off, y_off + 4);
+        if height >= 4 {
+            widgets::Text::<_, align::x::Left, align::y::Top>::new(
+                true,
+                format!(
+                    "Files: {}    Pieces: {}    P-size: {}    Peers: {}    Trackers: {}",
+                    self.torr
+                        .files
+                        .map(|f| format!("{}", f))
+                        .unwrap_or("?".into()),
+                    self.torr
+                        .pieces
+                        .map(|p| format!("{}", p))
+                        .unwrap_or("?".into()),
+                    self.torr
+                        .piece_size
+                        .map(|p| p.file_size(sopt::DECIMAL).unwrap())
+                        .unwrap_or("?".into()),
+                    self.torr.peers,
+                    self.torr.trackers,
+                ),
+            ).render(target, width, 1, x_off, y_off + 3);
+        }
+
+        if height >= 5 {
+            widgets::Text::<_, align::x::Left, align::y::Top>::new(
+                true,
+                format!("Path: {}", self.torr.path,),
+            ).render(target, width, 1, x_off, y_off + 4);
+        }
     }
 }
