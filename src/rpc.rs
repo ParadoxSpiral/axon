@@ -212,12 +212,11 @@ impl<'v> RpcContext<'v> {
                                         ref ids, ..
                                     } = msg
                                     {
-                                        let ids: Vec<_> =
-                                            ids.iter().map(|id| id.clone().into_owned()).collect();
-
                                         self.send(CMessage::Subscribe {
                                             serial: self.next_serial(),
-                                            ids: ids.clone(),
+                                            ids: ids.iter()
+                                                .map(|id| id.clone().into_owned())
+                                                .collect(),
                                         });
                                     } else if let SMessage::ResourcesRemoved { ref ids, .. } = msg {
                                         #[cfg(feature = "dbg")]

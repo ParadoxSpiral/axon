@@ -16,14 +16,12 @@
 pub mod widgets;
 
 use humansize::{file_size_opts as sopt, FileSize};
-use itertools::Itertools;
 use synapse_rpc::message::{CMessage, SMessage};
 use synapse_rpc::resource::{Resource, ResourceKind, SResourceUpdate, Server, Torrent, Tracker};
 use termion::{color, cursor};
 use termion::event::Key;
 use url::Url;
 
-use std::collections::HashMap;
 use std::io::Write;
 
 use rpc::RpcContext;
@@ -556,78 +554,48 @@ impl Renderable for MainPanel {
             }
         };
         let draw_trackers = |target: &mut _, width, height, x, y| {
-            let sel_tor = self.torrents.1.get(self.torrents.0);
-            // FIXME: Make this prettier and remove RefCell
-            let dedup_trackers =
-                ::std::cell::RefCell::new(HashMap::with_capacity(self.trackers.len()));
-            let iter = self.trackers
+            let sel_tor = match self.focus {
+                Focus::Torrents | Focus::Filter => self.torrents.1.get(self.torrents.0),
+                Focus::Details => self.details.1.get(self.details.0).map(|d| d),
+            };
+            let mut trackers: Vec<(_, Tracker, Vec<String>)> =
+                Vec::with_capacity(self.trackers.len());
+            for t in self.trackers
                 .iter()
-                // coalesce works because the trackers are sorted
-                .coalesce(|t1, t2| {
-                    t1.url
-                        .as_ref()
-                        .and_then(|u1| {
-                            t2.url.as_ref().and_then(|u2| {
-                                if u1.host_str().unwrap() == u2.host_str().unwrap() {
-                                    dedup_trackers
-                                        .borrow_mut()
-                                        .entry(u2.host_str().unwrap().clone())
-                                        .or_insert(Vec::new())
-                                        .push(t2.torrent_id.clone());
-                                    Some(Ok(t1))
-                                } else {
-                                    Some(Err((t1, t2)))
-                                }
-                            })
-                        })
-                        .unwrap_or_else(|| Err((t1, t2)))
-                });
-            for (i, t) in iter.take(height as _).enumerate() {
-                let (count, matches_dedup) = t.url
-                    .as_ref()
-                    .map(|u| {
-                        dedup_trackers
-                            .borrow()
-                            .get(u.host_str().unwrap())
-                            .map(|ded| {
-                                (
-                                    1 + ded.len(),
-                                    sel_tor.map(|s| ded.contains(&s.id)).unwrap_or(false),
-                                )
-                            })
-                            .unwrap_or((1, false))
-                    })
-                    .unwrap_or((1, false));
-                let (c_s, c_e) = if sel_tor
-                    .map(|s| s.id == t.torrent_id || matches_dedup)
-                    .unwrap_or(false) && t.error.is_some()
-                {
-                    (
+                .filter(|t| self.torrents.1.iter().any(|tor| tor.id == t.torrent_id))
+            {
+                if let Some(pos) = trackers.iter().position(|ex| ex.1.url == t.url) {
+                    trackers[pos].0 += 1;
+                    trackers[pos].2.push(t.torrent_id.clone());
+                } else {
+                    trackers.push((1, t.clone(), Vec::new()));
+                }
+            }
+            for (i, &(count, ref t, ref tors)) in trackers.iter().take(height as _).enumerate() {
+                let matches = sel_tor
+                    .map(|s| s.id == t.torrent_id || tors.contains(&s.id))
+                    .unwrap_or(false);
+                let (c_s, c_e) = match (matches, t.error.is_some()) {
+                    (true, true) => (
                         format!("{}{}", color::Fg(color::Cyan), color::Bg(color::Red)),
                         format!("{}{}", color::Fg(color::Reset), color::Bg(color::Reset)),
-                    )
-                } else if sel_tor
-                    .map(|s| s.id == t.torrent_id || matches_dedup)
-                    .unwrap_or(false)
-                {
-                    (
+                    ),
+                    (true, false) => (
                         format!("{}", color::Fg(color::Cyan)),
                         format!("{}", color::Fg(color::Reset)),
-                    )
-                } else if t.error.is_some() {
-                    (
+                    ),
+                    (false, true) => (
                         format!("{}", color::Fg(color::Red)),
                         format!("{}", color::Fg(color::Reset)),
-                    )
-                } else {
-                    ("".into(), "".into())
+                    ),
+                    (false, false) => ("".into(), "".into()),
                 };
                 widgets::Text::<_, align::x::Left, align::y::Top>::new(
                     true,
                     format!(
                         "{}({}) {}{}",
                         c_s,
-                        ids.len() + 1,
+                        count,
                         t.url
                             .as_ref()
                             .map(|u| u.host_str().unwrap())
@@ -654,9 +622,10 @@ impl Renderable for MainPanel {
             widgets::Text::<_, align::x::Left, align::y::Top>::new(
                 true,
                 format!(
-                    "Server uptime: {}   {}[{}]↑ {}[{}]↓   \
+                    "Server: {}, {}   {}[{}]↑ {}[{}]↓   \
                      Session: {:.2}, {}↑ {}↓   Lifetime: {:.2}, {}↑ {}↓",
                     ::utils::date_diff_now(self.server.started),
+                    self.server.free_space.file_size(sopt::DECIMAL).unwrap(),
                     self.server.rate_up.file_size(sopt::DECIMAL).unwrap(),
                     self.server
                         .throttle_up
@@ -772,74 +741,68 @@ impl HandleRpc for MainPanel {
     fn rpc(&mut self, _: &RpcContext, msg: &SMessage) -> bool {
         match msg {
             &SMessage::ResourcesRemoved { ref ids, .. } => {
-                // FIXME: This shittiness can go once closure disjoint field borrows land
+                // FIXME: Some shittiness can go once closure disjoint field borrows land
                 let mut i = 0;
-                let mut dec = false;
+                let mut dec = 0;
                 let idx = self.torrents.0;
                 self.torrents.1.retain(|t| {
                     i += 1;
                     if ids.iter().any(|i| t.id == *i) {
                         if i - 1 == idx && i != 1 {
-                            dec = true;
+                            dec += 1;
                         }
                         false
                     } else {
                         true
                     }
                 });
-                if dec {
-                    self.torrents.0 -= 1;
+                if dec > 0 {
+                    self.torrents.0.saturating_sub(dec);
                 }
 
                 i = 0;
-                dec = false;
+                dec = 0;
                 let idx = self.details.0;
                 self.details.1.retain(|t| {
                     i += 1;
                     if ids.iter().any(|i| t.id == *i) {
                         if i - 1 == idx && i != 1 {
-                            dec = true;
+                            dec += 1;
                         }
                         false
                     } else {
                         true
                     }
                 });
-                if dec {
-                    self.details.0 -= 1;
+                if dec > 0 {
+                    self.torrents.0.saturating_sub(dec);
+                }
+                if self.details.1.is_empty() {
+                    self.focus = Focus::Torrents;
                 }
 
-                i = 0;
-                self.trackers.retain(|t| {
-                    i += 1;
-                    if ids.iter().any(|i| t.id == *i) {
-                        false
-                    } else {
-                        true
-                    }
-                });
+                self.trackers.retain(|t| !ids.iter().any(|i| t.id == *i));
+
                 true
             }
-            &SMessage::UpdateResources { ref resources } => {
+            &SMessage::UpdateResources { ref resources, .. } => {
                 for r in resources {
                     match *r {
                         SResourceUpdate::Resource(ref res) => {
                             if let Resource::Torrent(ref t) = **res {
-                                self.torrents.1.push(t.clone());
-                                // TODO: insertion sort
-                                self.torrents.1.sort_unstable_by(|t1, t2| {
-                                    t1.name
+                                ::utils::insert_sorted(&mut self.torrents.1, t.clone(), |t, ex| {
+                                    t.name
                                         .as_ref()
-                                        .map(|t| t.to_lowercase())
-                                        .cmp(&t2.name.as_ref().map(|t| t.to_lowercase()))
+                                        .map(|n| n.to_lowercase())
+                                        .cmp(&ex.name.as_ref().map(|n| n.to_lowercase()))
                                 });
                             } else if let Resource::Tracker(ref t) = **res {
-                                self.trackers.push(t.clone());
-                                self.trackers.sort_unstable_by(|t1, t2| {
-                                    t1.url
+                                ::utils::insert_sorted(&mut self.trackers, t.clone(), |t, ex| {
+                                    t.url.as_ref().unwrap().host_str().unwrap().cmp(&ex.url
                                         .as_ref()
-                                        .map(|u| u.host_str())
-                                        .cmp(&t2.url.as_ref().map(|u| u.host_str()))
+                                        .unwrap()
+                                        .host_str()
+                                        .unwrap())
                                 });
                             } else if let Resource::Server(ref s) = **res {
                                 self.server = s.clone();
@@ -847,15 +810,15 @@ impl HandleRpc for MainPanel {
                         }
                         _ => {
                             for t in &mut self.torrents.1 {
-                                t.update(r);
+                                t.update(r.clone());
                             }
                             for t in &mut self.details.1 {
-                                t.update(r);
+                                t.update(r.clone());
                             }
                             for t in &mut self.trackers {
-                                t.update(r);
+                                t.update(r.clone());
                             }
-                            self.server.update(r);
+                            self.server.update(r.clone());
                         }
                     }
                 }
@@ -906,7 +869,7 @@ impl Renderable for TorrentDetailsPanel {
                     if self.torr.sequential {
                         "Sequential"
                     } else {
-                        "No order"
+                        "Unordered"
                     },
                     ::utils::date_diff_now(self.torr.created),
                     ::utils::date_diff_now(self.torr.modified),

@@ -19,7 +19,6 @@ extern crate chrono;
 extern crate crossbeam;
 extern crate futures;
 extern crate humansize;
-extern crate itertools;
 #[macro_use]
 extern crate lazy_static;
 extern crate parking_lot;
