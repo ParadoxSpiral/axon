@@ -777,7 +777,7 @@ impl HandleRpc for MainPanel {
                 if dec > 0 {
                     self.torrents.0.saturating_sub(dec);
                 }
-                if self.details.1.is_empty() {
+                if self.details.1.is_empty() && self.focus == Focus::Details {
                     self.focus = Focus::Torrents;
                 }
 
