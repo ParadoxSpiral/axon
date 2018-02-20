@@ -249,13 +249,11 @@ impl Renderable for Tabs {
         let n_tabs = self.tabs.len();
         let sec_len = width / n_tabs as u16;
         // FIXME: NLL (probably)
-        let div_budget = "─".repeat(
-            (width.saturating_sub(
-                self.tabs
-                    .iter()
-                    .fold(0, |acc, t| acc + utils::count_without_styling(&t.name())),
-            ) as usize),
-        );
+        let div_budget = "─".repeat(width.saturating_sub(
+            self.tabs
+                .iter()
+                .fold(0, |acc, t| acc + utils::count_without_styling(&t.name())),
+        ) as usize);
         let mut div_budget = div_budget.chars();
         let div_budget = div_budget.by_ref();
         for (i, t) in self.tabs.iter().enumerate() {
@@ -371,6 +369,7 @@ where
     below: &'a mut B,
     top_dimensions: (u16, u16),
     box_color: Option<&'a C>,
+    name: Option<&'a str>,
 }
 
 impl<'a, T, B, C> BorrowedOverlay<'a, T, B, C>
@@ -379,11 +378,12 @@ where
     B: Component + ?Sized,
     C: Color,
 {
-    pub fn new(
+    pub fn new<J: Into<Option<&'a str>>>(
         top: &'a mut T,
         below: &'a mut B,
         top_dimensions: (u16, u16),
         box_color: Option<&'a C>,
+        name: J,
     ) -> BorrowedOverlay<'a, T, B, C> {
         assert!(top_dimensions.0 > 0 && top_dimensions.1 > 0);
         BorrowedOverlay {
@@ -391,6 +391,7 @@ where
             below,
             top_dimensions,
             box_color,
+            name: name.into(),
         }
     }
 }
@@ -412,7 +413,7 @@ where
         let y_off = y_off + (height / 2).saturating_sub(self.top_dimensions.1 / 2 + 1);
 
         // Prepare writing the overlay box
-        let delim_hor = (0..self.top_dimensions.0).fold("".to_owned(), |s, _| s + "─");
+        let delim_hor = "─".repeat(self.top_dimensions.0 as _);
         let (start_color, end_color) = if let Some(c) = self.box_color {
             (
                 format!("{}", color::Fg(c as &Color)),
@@ -426,14 +427,34 @@ where
         };
 
         // Write box around top layer
-        write!(
-            target,
-            "{}{}┌{}┐{}",
-            cursor::Goto(x_off, y_off),
-            start_color,
-            delim_hor,
-            end_color,
-        ).unwrap();
+        if self.name.is_none() {
+            write!(
+                target,
+                "{}{}┌{}┐{}",
+                cursor::Goto(x_off, y_off),
+                start_color,
+                delim_hor,
+                end_color,
+            ).unwrap();
+        } else {
+            write!(
+                target,
+                "{}{}┌{}┐{}",
+                cursor::Goto(x_off, y_off),
+                start_color,
+                {
+                    let name = self.name.unwrap();
+                    let delim = "─".repeat(self.top_dimensions.0 as usize - name.len());
+                    let mut mid = delim.len() / 2;
+                    while delim.get(..mid).is_none() && mid > 0 {
+                        mid -= 1;
+                    }
+                    let (delim_l, delim_r) = delim.split_at(mid);
+                    format!("{}{}{}", delim_l, name, delim_r)
+                },
+                end_color,
+            ).unwrap();
+        }
         for i in 1..(self.top_dimensions.1 + 1) {
             write!(
                 target,
@@ -475,17 +496,19 @@ where
     below: ManuallyDrop<Box<Component>>,
     top_dimensions: (u16, u16),
     box_color: Option<C>,
+    name: Option<String>,
 }
 impl<T, C> OwnedOverlay<T, C>
 where
     T: Component,
     C: Color,
 {
-    pub fn new<I: Into<Option<C>>>(
+    pub fn new<I: Into<Option<C>>, J: Into<Option<String>>>(
         top: T,
         below: Box<Component>,
         top_dimensions: (u16, u16),
         box_color: I,
+        name: J,
     ) -> OwnedOverlay<T, C> {
         assert!(top_dimensions.0 > 0 && top_dimensions.1 > 0);
         OwnedOverlay {
@@ -493,6 +516,7 @@ where
             below: ManuallyDrop::new(below),
             top_dimensions,
             box_color: box_color.into(),
+            name: name.into(),
         }
     }
 }
@@ -518,6 +542,7 @@ where
             &mut **self.below,
             self.top_dimensions,
             self.box_color.as_ref(),
+            self.name.as_ref().map(|s| &s[..]),
         ).render(target, width, height, x_off, y_off)
     }
 }

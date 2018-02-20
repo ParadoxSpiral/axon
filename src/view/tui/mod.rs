@@ -173,11 +173,12 @@ impl HandleInput for LoginPanel {
                 }
                 InputResult::Rerender
             }
-            Key::Char('\n') => if let Err(err) = Url::parse(self.server.inner())
-                .map_err(|err| format!("Server: {}", err))
+            Key::Char('\n') => if let Err((err, err_name)) = Url::parse(self.server.inner())
+                .map_err(|err| (format!("{}", err), "Url"))
                 .and_then(|server| {
                     let pass = self.pass.inner();
-                    ctx.init(server, pass).map_err(|err| format!("{}", err))
+                    ctx.init(server, pass)
+                        .map_err(|err| (format!("{}", err), "RPC"))
                 }) {
                 let len = err.len();
                 let overlay = Box::new(widgets::OwnedOverlay::new(
@@ -187,6 +188,7 @@ impl HandleInput for LoginPanel {
                     Box::new(widgets::IgnoreRpcPassInput::new(self.clone())),
                     (len as u16 + 2, 1),
                     color::Red,
+                    err_name.to_owned(),
                 ));
                 InputResult::ReplaceWith(overlay as Box<Component>)
             } else {

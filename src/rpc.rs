@@ -139,10 +139,7 @@ impl<'v> RpcContext<'v> {
     pub fn send(&self, msg: CMessage) {
         #[cfg(feature = "dbg")]
         debug!(*::S_RPC, "Sending {:#?}", msg);
-        match serde_json::to_string(&msg) {
-            Err(e) => self.view.global_err(format!("{}", e.description())),
-            Ok(msg) => self.send_raw(OwnedMessage::Text(msg)),
-        }
+        self.send_raw(OwnedMessage::Text(serde_json::to_string(&msg).unwrap()));
     }
 
     fn send_raw(&self, msg: OwnedMessage) {
@@ -151,7 +148,7 @@ impl<'v> RpcContext<'v> {
         let mut sink = sink.unwrap().1.lock();
 
         match (sink.send(msg), sink.flush()) {
-            (Err(e), _) | (_, Err(e)) => self.view.global_err(format!("{:?}", e)),
+            (Err(e), _) | (_, Err(e)) => self.view.global_err(format!("{:?}", e), Some("RPC")),
             _ => {}
         }
     }
@@ -190,7 +187,7 @@ impl<'v> RpcContext<'v> {
                             .map(|_| StreamRes::Close)
                             .map_err(|err| format!("{:?}", err)),
                     )
-                    .or_else(|e| future::err(self.view.global_err(e)))
+                    .or_else(|e| future::err(self.view.global_err(e, Some("RPC"))))
                     .and_then(|res| match res {
                         StreamRes::Msg(msg) => match msg {
                             OwnedMessage::Ping(p) => {
@@ -207,7 +204,8 @@ impl<'v> RpcContext<'v> {
                             }
                             OwnedMessage::Text(s) => {
                                 match serde_json::from_str::<SMessage>(&s) {
-                                    Err(e) => self.view.global_err(format!("{}", e.description())),
+                                    Err(e) => self.view
+                                        .global_err(format!("{}", e.description()), Some("RPC")),
                                     Ok(msg) => if let SMessage::ResourcesExtant {
                                         ref ids, ..
                                     } = msg

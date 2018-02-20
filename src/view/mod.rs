@@ -33,7 +33,7 @@ use self::tui::{widgets, Component, InputResult, Renderable};
 use utils::align;
 
 enum DisplayState {
-    GlobalErr(String, Box<Component>),
+    GlobalErr(String, Option<String>, Box<Component>),
     Component(Box<Component>),
 }
 
@@ -80,12 +80,13 @@ impl View {
                 DisplayState::Component(ref mut cmp) => {
                     cmp.render(&mut buf, width, height, 1, 1);
                 }
-                DisplayState::GlobalErr(ref err, ref mut cmp) => {
+                DisplayState::GlobalErr(ref err, ref err_name, ref mut cmp) => {
                     widgets::BorrowedOverlay::new(
                         &mut widgets::Text::<_, align::x::Center, align::y::Top>::new(true, &**err),
                         &mut **cmp,
                         (err.len() as u16 + 2, 1),
                         Some(&termion::color::Red),
+                        err_name.as_ref().map(|o| &o[..]),
                     ).render(&mut buf, width, height, 1, 1);
                 }
             }
@@ -125,13 +126,13 @@ impl View {
                 let mut cnt = self.content.lock();
 
                 // FIXME: NLL
-                let was_err = if let DisplayState::GlobalErr(_, _) = *cnt {
+                let was_err = if let DisplayState::GlobalErr(_, _, _) = *cnt {
                     true
                 } else {
                     false
                 };
                 let new = match *cnt {
-                    DisplayState::GlobalErr(_, ref mut cmp)
+                    DisplayState::GlobalErr(_, _, ref mut cmp)
                     | DisplayState::Component(ref mut cmp) => DisplayState::Component(unsafe {
                         Box::from_raw((&mut **cmp) as *mut Component)
                     }),
@@ -142,7 +143,7 @@ impl View {
                 } else {
                     // Simulate CloseOnInput
                     let ret = match *cnt {
-                        DisplayState::GlobalErr(_, ref mut cmp)
+                        DisplayState::GlobalErr(_, _, ref mut cmp)
                         | DisplayState::Component(ref mut cmp) => cmp.input(ctx, k),
                     };
                     match ret {
@@ -165,7 +166,7 @@ impl View {
         // FIXME: NLL
         let mut cnt = self.content.lock();
         if match *cnt {
-            DisplayState::GlobalErr(_, ref mut cmp) | DisplayState::Component(ref mut cmp) => {
+            DisplayState::GlobalErr(_, _, ref mut cmp) | DisplayState::Component(ref mut cmp) => {
                 cmp.rpc(ctx, msg)
             }
         } {
@@ -174,17 +175,20 @@ impl View {
         }
     }
 
-    pub fn global_err<T>(&self, err: T)
+    pub fn global_err<T, U>(&self, err: T, err_name: Option<U>)
     where
         T: ::std::fmt::Display,
+        U: ::std::fmt::Display,
     {
         // FIXME: NLL
         let mut cnt = self.content.lock();
         let new = match *cnt {
-            DisplayState::GlobalErr(_, ref mut cmp) | DisplayState::Component(ref mut cmp) => {
-                DisplayState::GlobalErr(format!("{}", err), unsafe {
-                    Box::from_raw((&mut **cmp) as *mut Component)
-                })
+            DisplayState::GlobalErr(_, _, ref mut cmp) | DisplayState::Component(ref mut cmp) => {
+                DisplayState::GlobalErr(
+                    format!("{}", err),
+                    err_name.map(|e| format!("{}", e)),
+                    unsafe { Box::from_raw((&mut **cmp) as *mut Component) },
+                )
             }
         };
         ManuallyDrop::new(mem::replace(&mut *cnt, new));
@@ -193,12 +197,13 @@ impl View {
     pub fn server_close(&self, data: Option<websocket::CloseData>) {
         let mut cnt = self.content.lock();
         *self.logged_in.borrow_mut() = false;
-        let msg = data.and_then(|data| Some(format!("Server closed, reason: {:?}", data)))
+        let msg = data.map(|d| format!("{:?}", d))
             .unwrap_or_else(|| "Disconnected".to_owned());
         mem::replace(
             &mut *cnt,
             DisplayState::GlobalErr(
                 msg,
+                Some("Server closed".to_owned()),
                 Box::new(widgets::IgnoreRpcPassInput::new(tui::LoginPanel::new())),
             ),
         );
