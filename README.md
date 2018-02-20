@@ -18,6 +18,7 @@ Torrent panel:
 - `esc` clears the filter, if selected
 - `d` opens the selected torrents' details
 - `t` toggles displayal of the list of trackers
+- `PgUp/Down` scrolls by one panel height
 
 Torrent details:
 - `q` closes the current details pane

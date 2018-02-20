@@ -113,6 +113,7 @@ impl View {
     }
 
     pub fn handle_input(&self, ctx: &RpcContext, k: Key) -> InputResult {
+        let size = termion::terminal_size().unwrap_or((0, 0));
         match k {
             Key::Ctrl('d') => if !*self.logged_in.borrow() {
                 InputResult::Close
@@ -144,7 +145,7 @@ impl View {
                     // Simulate CloseOnInput
                     let ret = match *cnt {
                         DisplayState::GlobalErr(_, _, ref mut cmp)
-                        | DisplayState::Component(ref mut cmp) => cmp.input(ctx, k),
+                        | DisplayState::Component(ref mut cmp) => cmp.input(ctx, k, size.0, size.1),
                     };
                     match ret {
                         InputResult::ReplaceWith(comp) => {

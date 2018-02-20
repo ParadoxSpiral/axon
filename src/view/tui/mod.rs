@@ -36,7 +36,7 @@ pub trait Renderable {
 }
 
 pub trait HandleInput {
-    fn input(&mut self, rpc: &RpcContext, k: Key) -> InputResult;
+    fn input(&mut self, rpc: &RpcContext, k: Key, width: u16, height: u16) -> InputResult;
 }
 
 pub trait HandleRpc {
@@ -119,7 +119,7 @@ impl Renderable for LoginPanel {
 }
 
 impl HandleInput for LoginPanel {
-    fn input(&mut self, ctx: &RpcContext, k: Key) -> InputResult {
+    fn input(&mut self, ctx: &RpcContext, k: Key, _: u16, _: u16) -> InputResult {
         match k {
             Key::Down | Key::Up | Key::Char('\t') => {
                 self.srv_selected = !self.srv_selected;
@@ -251,7 +251,7 @@ impl MainPanel {
 impl Component for MainPanel {}
 
 impl HandleInput for MainPanel {
-    fn input(&mut self, ctx: &RpcContext, k: Key) -> InputResult {
+    fn input(&mut self, ctx: &RpcContext, k: Key, _: u16, height: u16) -> InputResult {
         match k {
             Key::Char('t') => {
                 match (self.focus, self.trackers_displ) {
@@ -447,6 +447,28 @@ impl HandleInput for MainPanel {
                     InputResult::Rerender
                 }
                 _ => InputResult::Key(Key::Down),
+            },
+            Key::PageUp => match self.focus {
+                Focus::Torrents if self.torrents.0 >= height as usize => {
+                    self.torrents.0 -= height as usize;
+                    InputResult::Rerender
+                }
+                Focus::Torrents => {
+                    self.torrents.0 = 0;
+                    InputResult::Rerender
+                }
+                _ => InputResult::Key(Key::PageUp),
+            },
+            Key::PageDown => match self.focus {
+                Focus::Torrents if self.torrents.0 + (height as usize) < self.torrents.1.len() => {
+                    self.torrents.0 += height as usize;
+                    InputResult::Rerender
+                }
+                Focus::Torrents => {
+                    self.torrents.0 = self.torrents.1.len() - 1;
+                    InputResult::Rerender
+                }
+                _ => InputResult::Key(Key::PageDown),
             },
             Key::Left => match self.focus {
                 Focus::Details if self.details.0 > 0 => {

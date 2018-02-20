@@ -304,10 +304,14 @@ impl Renderable for Tabs {
 }
 
 impl HandleInput for Tabs {
-    fn input(&mut self, ctx: &RpcContext, k: Key) -> InputResult {
+    fn input(&mut self, ctx: &RpcContext, k: Key, w: u16, h: u16) -> InputResult {
         let len = self.tabs.len();
 
-        match self.tabs.get_mut(self.active_idx).unwrap().input(ctx, k) {
+        match self.tabs
+            .get_mut(self.active_idx)
+            .unwrap()
+            .input(ctx, k, w, h)
+        {
             InputResult::Key(Key::Char('l')) => if self.active_idx + 1 < len {
                 self.active_idx += 1;
                 InputResult::Rerender
@@ -567,8 +571,8 @@ where
     T: Component,
     C: Color,
 {
-    fn input(&mut self, ctx: &RpcContext, k: Key) -> InputResult {
-        let ret = self.top.input(ctx, k);
+    fn input(&mut self, ctx: &RpcContext, k: Key, w: u16, h: u16) -> InputResult {
+        let ret = self.top.input(ctx, k, w, h);
         match ret {
             InputResult::Close => InputResult::ReplaceWith(unsafe {
                 Box::from_raw((&mut **self.below) as *mut Component)
@@ -1002,7 +1006,7 @@ impl<T> HandleInput for CloseOnInput<T>
 where
     T: Renderable + HandleRpc,
 {
-    fn input(&mut self, _: &RpcContext, _: Key) -> InputResult {
+    fn input(&mut self, _: &RpcContext, _: Key, _: u16, _: u16) -> InputResult {
         InputResult::Close
     }
 }
@@ -1095,8 +1099,8 @@ impl<T> HandleInput for IgnoreRpcPassInput<T>
 where
     T: Renderable + HandleInput,
 {
-    fn input(&mut self, ctx: &RpcContext, k: Key) -> InputResult {
-        self.content.input(ctx, k)
+    fn input(&mut self, ctx: &RpcContext, k: Key, w: u16, h: u16) -> InputResult {
+        self.content.input(ctx, k, w, h)
     }
 }
 
