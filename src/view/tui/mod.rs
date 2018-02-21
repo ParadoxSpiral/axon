@@ -338,16 +338,24 @@ impl HandleInput for MainPanel {
                 _ => InputResult::Key(Key::Char('\n')),
             },
             Key::Char('E') => match self.focus {
+                // TODO: Needs testing
                 Focus::Torrents | Focus::Details => {
-                    if let Some(Some(Some(err))) = if self.focus == Focus::Torrents {
+                    if let Some(Some(Some(Some(err)))) = if self.focus == Focus::Torrents {
                         self.torrents.1.get(self.torrents.0)
                     } else {
                         self.details.1.get(self.details.0)
                     }.map(|tor| {
                         self.trackers
                             .iter()
-                            .find(|tra| tor.id == tra.torrent_id && tra.error.is_some())
-                            .map(|t| t.error.clone())
+                            .find(|tra| tor.id == tra.torrent_id)
+                            .map(|tra| {
+                                tra.error.as_ref().map(|e| Some(e.clone())).or_else(|| {
+                                    self.trackers
+                                        .iter()
+                                        .find(|t| tra.url == t.url && t.error.is_some())
+                                        .map(|t| t.error.clone())
+                                })
+                            })
                     }) {
                         let len = err.len();
                         InputResult::ReplaceWith(Box::new(widgets::OwnedOverlay::new(
