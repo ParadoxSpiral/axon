@@ -181,7 +181,7 @@ impl HandleInput for LoginPanel {
                         .map_err(|err| (format!("{}", err), "RPC"))
                 }) {
                 let len = err.len();
-                let overlay = Box::new(widgets::OwnedOverlay::new(
+                InputResult::ReplaceWith(Box::new(widgets::OwnedOverlay::new(
                     widgets::CloseOnInput::new(widgets::IgnoreRpc::new(
                         widgets::Text::<_, align::x::Center, align::y::Top>::new(true, err),
                     )),
@@ -189,8 +189,7 @@ impl HandleInput for LoginPanel {
                     (len as u16 + 2, 1),
                     color::Red,
                     err_name.to_owned(),
-                ));
-                InputResult::ReplaceWith(overlay as Box<Component>)
+                )) as Box<Component>)
             } else {
                 let mut panel = Box::new(MainPanel::new((ctx.next_serial(), ctx.next_serial())));
                 // Init rpc subscribes etc
@@ -224,6 +223,7 @@ enum Focus {
     Torrents,
 }
 
+#[derive(Clone)]
 struct MainPanel {
     focus: Focus,
     filter: (bool, Filter),
@@ -336,6 +336,66 @@ impl HandleInput for MainPanel {
                     InputResult::Rerender
                 }
                 _ => InputResult::Key(Key::Char('\n')),
+            },
+            Key::Char('E') => match self.focus {
+                Focus::Torrents | Focus::Details => {
+                    if let Some(Some(Some(err))) = if self.focus == Focus::Torrents {
+                        self.torrents.1.get(self.torrents.0)
+                    } else {
+                        self.details.1.get(self.details.0)
+                    }.map(|tor| {
+                        self.trackers
+                            .iter()
+                            .find(|tra| tor.id == tra.torrent_id && tra.error.is_some())
+                            .map(|t| t.error.clone())
+                    }) {
+                        let len = err.len();
+                        InputResult::ReplaceWith(Box::new(widgets::OwnedOverlay::new(
+                            widgets::CloseOnInput::new(widgets::IgnoreRpc::new(
+                                widgets::Text::<_, align::x::Center, align::y::Top>::new(true, err),
+                            )),
+                            // FIXME: There has to be a better way than cloning self
+                            Box::new(widgets::IgnoreRpcPassInput::new(self.clone())),
+                            (len as u16 + 2, 1),
+                            color::Red,
+                            "Tracker".to_owned(),
+                        )) as Box<Component>)
+                    } else {
+                        InputResult::Key(Key::Char('E'))
+                    }
+                }
+                Focus::Filter => {
+                    f_push!(self, ctx, 'E');
+                    InputResult::Rerender
+                }
+            },
+            Key::Char('e') => match self.focus {
+                Focus::Torrents | Focus::Details => {
+                    if let Some(Some(err)) = if self.focus == Focus::Torrents {
+                        self.torrents.1.get(self.torrents.0)
+                    } else {
+                        self.details.1.get(self.details.0)
+                    }.map(|t| t.error.clone())
+                    {
+                        let len = err.len();
+                        InputResult::ReplaceWith(Box::new(widgets::OwnedOverlay::new(
+                            widgets::CloseOnInput::new(widgets::IgnoreRpc::new(
+                                widgets::Text::<_, align::x::Center, align::y::Top>::new(true, err),
+                            )),
+                            // FIXME: There has to be a better way than cloning self
+                            Box::new(widgets::IgnoreRpcPassInput::new(self.clone())),
+                            (len as u16 + 2, 1),
+                            color::Red,
+                            "Torrent".to_owned(),
+                        )) as Box<Component>)
+                    } else {
+                        InputResult::Key(Key::Char('e'))
+                    }
+                }
+                Focus::Filter => {
+                    f_push!(self, ctx, 'e');
+                    InputResult::Rerender
+                }
             },
             Key::Ctrl('f') => {
                 self.focus = Focus::Filter;
@@ -883,13 +943,8 @@ impl Renderable for TorrentDetailsPanel {
             widgets::Text::<_, align::x::Left, align::y::Top>::new(
                 true,
                 format!(
-                    "{}{}    {}    Created: {} ago    Modified: {} ago",
+                    "{}    {}    Created: {} ago    Modified: {} ago",
                     self.torr.status.as_str(),
-                    if let Some(ref err) = self.torr.error {
-                        format!(": {}", err)
-                    } else {
-                        "".into()
-                    },
                     if self.torr.sequential {
                         "Sequential"
                     } else {

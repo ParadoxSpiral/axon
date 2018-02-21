@@ -201,6 +201,7 @@ impl FilterMode {
     }
 }
 
+#[derive(Clone)]
 pub struct Filter {
     mode: FilterMode,
     input: widgets::Input,
