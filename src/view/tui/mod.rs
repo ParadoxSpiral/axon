@@ -878,8 +878,8 @@ impl HandleRpc for MainPanel {
                 true
             }
             &SMessage::UpdateResources { ref resources, .. } => {
-                for r in resources {
-                    match *r {
+                'UPDATES: for upd in resources {
+                    match *upd {
                         SResourceUpdate::Resource(ref res) => {
                             if let Resource::Torrent(ref t) = **res {
                                 ::utils::insert_sorted(&mut self.torrents.1, t.clone(), |t, ex| {
@@ -901,16 +901,34 @@ impl HandleRpc for MainPanel {
                             }
                         }
                         _ => {
+                            // TODO: Only match ids against sensible targets of each upd variant
+                            if upd.id() == &*self.server.id {
+                                self.server.update(upd.clone());
+                                continue 'UPDATES;
+                            }
+                            let mut was_torrent = false;
                             for t in &mut self.torrents.1 {
-                                t.update(r.clone());
+                                if upd.id() == &*t.id {
+                                    t.update(upd.clone());
+                                    was_torrent = true;
+                                    break;
+                                }
                             }
                             for t in &mut self.details.1 {
-                                t.update(r.clone());
+                                if upd.id() == &*t.id {
+                                    t.update(upd.clone());
+                                    continue 'UPDATES;
+                                }
+                            }
+                            if was_torrent {
+                                continue;
                             }
                             for t in &mut self.trackers {
-                                t.update(r.clone());
+                                if upd.id() == &*t.id {
+                                    t.update(upd.clone());
+                                    continue 'UPDATES;
+                                }
                             }
-                            self.server.update(r.clone());
                         }
                     }
                 }
