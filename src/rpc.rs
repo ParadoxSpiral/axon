@@ -38,6 +38,10 @@ use std::time::Duration;
 
 use view::View;
 
+lazy_static!(
+    pub static ref SERVER_VERSION: Mutex<String> = Mutex::new("".to_owned());
+);
+
 type InnerStream = Framed<Box<Stream + Send>, MessageCodec<OwnedMessage>>;
 type SplitSocket = (
     RefCell<SplitStream<InnerStream>>,
@@ -115,6 +119,7 @@ impl<'v> RpcContext<'v> {
                     synapse_rpc::MINOR_VERSION
                 ));
             }
+            (*SERVER_VERSION.lock()) = format!("{}.{}", srv_ver.major, srv_ver.minor);
         } else {
             return Err("Server sent non-text response, i.e. not its version".to_owned());
         }

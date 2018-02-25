@@ -191,10 +191,7 @@ impl HandleInput for LoginPanel {
                     err_name.to_owned(),
                 )) as Box<Component>)
             } else {
-                let mut panel = Box::new(MainPanel::new((ctx.next_serial(), ctx.next_serial())));
-                // Init rpc subscribes etc
-                panel.init(ctx);
-                InputResult::ReplaceWith(panel as Box<Component>)
+                InputResult::ReplaceWith(Box::new(MainPanel::new(ctx)) as Box<Component>)
             },
             Key::Char(c) => {
                 if self.srv_selected {
@@ -232,19 +229,23 @@ struct MainPanel {
     trackers_displ: bool,
     details: (usize, Vec<Torrent>),
     server: Server,
+    server_version: String,
 }
 
 impl MainPanel {
-    fn new(filter_serials: (u64, u64)) -> MainPanel {
-        MainPanel {
+    fn new(ctx: &RpcContext) -> MainPanel {
+        let mut p = MainPanel {
             focus: Focus::Torrents,
-            filter: (false, Filter::new(filter_serials.0, filter_serials.1)),
+            filter: (false, Filter::new(ctx.next_serial(), ctx.next_serial())),
             torrents: (0, Vec::new()),
             trackers: Vec::new(),
             trackers_displ: false,
             details: (0, Vec::new()),
             server: Default::default(),
-        }
+            server_version: ::rpc::SERVER_VERSION.lock().clone(),
+        };
+        p.init(ctx);
+        p
     }
 }
 
@@ -714,8 +715,9 @@ impl Renderable for MainPanel {
             widgets::Text::<_, align::x::Left, align::y::Top>::new(
                 true,
                 format!(
-                    "Server: {}, {}   {}[{}]↑ {}[{}]↓   \
+                    "Server: {} {}, {}   {}[{}]↑ {}[{}]↓   \
                      Session: {:.2}, {}↑ {}↓   Lifetime: {:.2}, {}↑ {}↓",
+                    self.server_version,
                     ::utils::date_diff_now(self.server.started),
                     self.server.free_space.file_size(sopt::DECIMAL).unwrap(),
                     self.server.rate_up.file_size(sopt::DECIMAL).unwrap(),
@@ -986,7 +988,7 @@ impl Renderable for TorrentDetailsPanel {
             widgets::Text::<_, align::x::Left, align::y::Top>::new(
                 true,
                 format!(
-                    "Rate up: {}[{}]    Rate down: {}[{}]    Upped: {}    Downed: {}",
+                    "Rates: {}[{}]↑ {}[{}]↓    Lifetime: {}↑ {}↓",
                     self.torr.rate_up.file_size(sopt::DECIMAL).unwrap(),
                     self.torr
                         .throttle_up
