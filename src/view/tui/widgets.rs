@@ -572,12 +572,11 @@ where
     C: Color,
 {
     fn input(&mut self, ctx: &RpcContext, k: Key, w: u16, h: u16) -> InputResult {
-        let ret = self.top.input(ctx, k, w, h);
-        match ret {
+        match self.top.input(ctx, k, w, h) {
             InputResult::Close => InputResult::ReplaceWith(unsafe {
                 Box::from_raw((&mut **self.below) as *mut Component)
             }),
-            _ => ret,
+            ret => ret,
         }
     }
 }
@@ -1112,4 +1111,59 @@ where
         false
     }
     fn init(&mut self, _: &RpcContext) {}
+}
+
+pub struct IgnoreInputPassRpc<T>
+where
+    T: Renderable + HandleRpc,
+{
+    content: T,
+}
+
+impl<T> IgnoreInputPassRpc<T>
+where
+    T: Renderable + HandleRpc,
+{
+    pub fn new(ct: T) -> IgnoreInputPassRpc<T> {
+        IgnoreInputPassRpc { content: ct }
+    }
+}
+
+impl<T> Component for IgnoreInputPassRpc<T>
+where
+    T: Renderable + HandleRpc,
+{
+}
+
+impl<T> Renderable for IgnoreInputPassRpc<T>
+where
+    T: Renderable + HandleRpc,
+{
+    fn name(&self) -> String {
+        self.content.name()
+    }
+    fn render(&mut self, target: &mut Vec<u8>, width: u16, height: u16, x_off: u16, y_off: u16) {
+        self.content.render(target, width, height, x_off, y_off);
+    }
+}
+
+impl<T> HandleInput for IgnoreInputPassRpc<T>
+where
+    T: Renderable + HandleRpc,
+{
+    fn input(&mut self, _: &RpcContext, k: Key, _: u16, _: u16) -> InputResult {
+        InputResult::Key(k)
+    }
+}
+
+impl<T> HandleRpc for IgnoreInputPassRpc<T>
+where
+    T: Renderable + HandleRpc,
+{
+    fn rpc(&mut self, ctx: &RpcContext, msg: &SMessage) -> bool {
+        self.content.rpc(ctx, msg)
+    }
+    fn init(&mut self, ctx: &RpcContext) {
+        self.content.init(ctx);
+    }
 }

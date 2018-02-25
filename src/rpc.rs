@@ -208,34 +208,39 @@ impl<'v> RpcContext<'v> {
                                 future::err(())
                             }
                             OwnedMessage::Text(s) => {
-                                match serde_json::from_str::<SMessage>(&s) {
-                                    Err(e) => self.view
-                                        .global_err(format!("{}", e.description()), Some("RPC")),
-                                    Ok(msg) => if let SMessage::ResourcesExtant {
-                                        ref ids, ..
-                                    } = msg
-                                    {
-                                        self.send(CMessage::Subscribe {
-                                            serial: self.next_serial(),
-                                            ids: ids.iter()
-                                                .map(|id| id.clone().into_owned())
-                                                .collect(),
-                                        });
-                                    } else if let SMessage::ResourcesRemoved { ref ids, .. } = msg {
-                                        #[cfg(feature = "dbg")]
-                                        debug!(*::S_RPC, "Received: {:#?}", msg);
-                                        self.send(CMessage::Unsubscribe {
-                                            serial: self.next_serial(),
-                                            ids: ids.clone(),
-                                        });
+                                let _ = serde_json::from_str::<SMessage>(&s)
+                                    .map_err(|e| {
+                                        self.view
+                                            .global_err(format!("{}", e.description()), Some("RPC"))
+                                    })
+                                    .map(|msg| match msg {
+                                        SMessage::ResourcesExtant { ids, .. } => {
+                                            self.send(CMessage::Subscribe {
+                                                serial: self.next_serial(),
+                                                ids: ids.iter()
+                                                    .map(|id| (&**id).to_owned())
+                                                    .collect(),
+                                            });
+                                        }
+                                        SMessage::ResourcesRemoved { serial, ids } => {
+                                            #[cfg(feature = "dbg")]
+                                            debug!(*::S_RPC, "Received: {:#?}", msg);
+                                            self.send(CMessage::Unsubscribe {
+                                                serial: self.next_serial(),
+                                                ids: ids.clone(),
+                                            });
 
-                                        self.view.handle_rpc(self, &msg);
-                                    } else {
-                                        #[cfg(feature = "dbg")]
-                                        debug!(*::S_RPC, "Received: {:#?}", msg);
-                                        self.view.handle_rpc(self, &msg);
-                                    },
-                                };
+                                            self.view.handle_rpc(
+                                                self,
+                                                &SMessage::ResourcesRemoved { serial, ids },
+                                            );
+                                        }
+                                        _ => {
+                                            #[cfg(feature = "dbg")]
+                                            debug!(*::S_RPC, "Received: {:#?}", msg);
+                                            self.view.handle_rpc(self, &msg);
+                                        }
+                                    });
                                 future::ok(())
                             }
                             _ => unreachable!(),

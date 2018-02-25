@@ -338,74 +338,78 @@ impl HandleInput for MainPanel {
                 }
                 _ => InputResult::Key(Key::Char('\n')),
             },
-            Key::Char('E') => match self.focus {
-                // TODO: Needs testing
-                Focus::Torrents | Focus::Details => {
-                    if let Some(Some(Some(Some(err)))) = if self.focus == Focus::Torrents {
-                        self.torrents.1.get(self.torrents.0)
-                    } else {
-                        self.details.1.get(self.details.0)
-                    }.map(|tor| {
-                        self.trackers
-                            .iter()
-                            .find(|tra| tor.id == tra.torrent_id)
-                            .map(|tra| {
-                                tra.error.as_ref().map(|e| Some(e.clone())).or_else(|| {
-                                    self.trackers
-                                        .iter()
-                                        .find(|t| tra.url == t.url && t.error.is_some())
-                                        .map(|t| t.error.clone())
+            Key::Char('E') => {
+                match self.focus {
+                    Focus::Torrents | Focus::Details => {
+                        if self.focus == Focus::Torrents {
+                            self.torrents.1.get(self.torrents.0)
+                        } else {
+                            self.details.1.get(self.details.0)
+                        }.and_then(|tor| {
+                            self.trackers
+                                .iter()
+                                .find(|tra| tor.id == tra.torrent_id)
+                                .and_then(|tra| {
+                                    tra.error
+                                        .as_ref()
+                                        .or_else(|| {
+                                            self.trackers
+                                                .iter()
+                                                .find(|t| tra.url == t.url && t.error.is_some())
+                                                .and_then(|t| t.error.as_ref())
+                                        })
+                                        .map(|e| e.clone())
                                 })
-                            })
-                    }) {
-                        let len = err.len();
-                        InputResult::ReplaceWith(Box::new(widgets::OwnedOverlay::new(
+                        })
+                            .and_then(|e| {
+                                let l = e.len();
+                                Some(InputResult::ReplaceWith(Box::new(widgets::OwnedOverlay::new(
                             widgets::CloseOnInput::new(widgets::IgnoreRpc::new(
-                                widgets::Text::<_, align::x::Center, align::y::Top>::new(true, err),
+                                widgets::Text::<_, align::x::Center, align::y::Top>::new(true, e),
                             )),
                             // FIXME: There has to be a better way than cloning self
-                            Box::new(widgets::IgnoreRpcPassInput::new(self.clone())),
-                            (len as u16 + 2, 1),
+                            Box::new(widgets::IgnoreInputPassRpc::new(self.clone())),
+                            (l as u16 + 2, 1),
                             color::Red,
                             "Tracker".to_owned(),
-                        )) as Box<Component>)
-                    } else {
-                        InputResult::Key(Key::Char('E'))
+                        )) as Box<Component>))
+                            })
+                            .unwrap_or(InputResult::Key(Key::Char('e')))
+                    }
+                    Focus::Filter => {
+                        f_push!(self, ctx, 'E');
+                        InputResult::Rerender
                     }
                 }
-                Focus::Filter => {
-                    f_push!(self, ctx, 'E');
-                    InputResult::Rerender
-                }
-            },
-            Key::Char('e') => match self.focus {
-                Focus::Torrents | Focus::Details => {
-                    if let Some(Some(err)) = if self.focus == Focus::Torrents {
-                        self.torrents.1.get(self.torrents.0)
-                    } else {
-                        self.details.1.get(self.details.0)
-                    }.map(|t| t.error.clone())
-                    {
-                        let len = err.len();
-                        InputResult::ReplaceWith(Box::new(widgets::OwnedOverlay::new(
+            }
+            Key::Char('e') => {
+                match self.focus {
+                    Focus::Torrents | Focus::Details => {
+                        if self.focus == Focus::Torrents {
+                            self.torrents.1.get(self.torrents.0)
+                        } else {
+                            self.details.1.get(self.details.0)
+                        }.and_then(|t| t.error.as_ref())
+                            .and_then(|e| {
+                                Some(InputResult::ReplaceWith(Box::new(widgets::OwnedOverlay::new(
                             widgets::CloseOnInput::new(widgets::IgnoreRpc::new(
-                                widgets::Text::<_, align::x::Center, align::y::Top>::new(true, err),
+                                widgets::Text::<_, align::x::Center, align::y::Top>::new(true, e.clone()),
                             )),
                             // FIXME: There has to be a better way than cloning self
-                            Box::new(widgets::IgnoreRpcPassInput::new(self.clone())),
-                            (len as u16 + 2, 1),
+                            Box::new(widgets::IgnoreInputPassRpc::new(self.clone())),
+                            (e.len() as u16 + 2, 1),
                             color::Red,
                             "Torrent".to_owned(),
-                        )) as Box<Component>)
-                    } else {
-                        InputResult::Key(Key::Char('e'))
+                        )) as Box<Component>))
+                            })
+                            .unwrap_or(InputResult::Key(Key::Char('e')))
+                    }
+                    Focus::Filter => {
+                        f_push!(self, ctx, 'e');
+                        InputResult::Rerender
                     }
                 }
-                Focus::Filter => {
-                    f_push!(self, ctx, 'e');
-                    InputResult::Rerender
-                }
-            },
+            }
             Key::Ctrl('f') => {
                 self.focus = Focus::Filter;
                 self.filter.0 = true;
