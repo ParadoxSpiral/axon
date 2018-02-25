@@ -163,7 +163,7 @@ impl View {
         }
     }
 
-    pub fn handle_rpc(&self, ctx: &RpcContext, msg: &SMessage) {
+    pub fn handle_rpc(&self, ctx: &RpcContext, msg: SMessage) {
         // FIXME: NLL
         let mut cnt = self.content.lock();
         if match *cnt {

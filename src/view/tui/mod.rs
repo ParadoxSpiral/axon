@@ -40,7 +40,7 @@ pub trait HandleInput {
 }
 
 pub trait HandleRpc {
-    fn rpc(&mut self, rpc: &RpcContext, msg: &SMessage) -> bool;
+    fn rpc(&mut self, rpc: &RpcContext, msg: SMessage) -> bool;
     fn init(&mut self, rpc: &RpcContext);
 }
 
@@ -836,9 +836,9 @@ impl Renderable for MainPanel {
 }
 
 impl HandleRpc for MainPanel {
-    fn rpc(&mut self, _: &RpcContext, msg: &SMessage) -> bool {
+    fn rpc(&mut self, _: &RpcContext, msg: SMessage) -> bool {
         match msg {
-            &SMessage::ResourcesRemoved { ref ids, .. } => {
+            SMessage::ResourcesRemoved { ids, .. } => {
                 // FIXME: Some shittiness can go once closure disjoint field borrows land
                 let mut i = 0;
                 let mut dec = 0;
@@ -883,55 +883,52 @@ impl HandleRpc for MainPanel {
 
                 true
             }
-            &SMessage::UpdateResources { ref resources, .. } => {
+            SMessage::UpdateResources { resources, .. } => {
                 'UPDATES: for upd in resources {
-                    match *upd {
-                        SResourceUpdate::Resource(ref res) => {
-                            if let Resource::Torrent(ref t) = **res {
-                                ::utils::insert_sorted(&mut self.torrents.1, t.clone(), |t, ex| {
+                    match upd {
+                        SResourceUpdate::Resource(res) => {
+                            let res = res.into_owned();
+                            if let Resource::Torrent(t) = res {
+                                ::utils::insert_sorted(&mut self.torrents.1, t, |t, ex| {
                                     t.name
                                         .as_ref()
                                         .map(|n| n.to_lowercase())
                                         .cmp(&ex.name.as_ref().map(|n| n.to_lowercase()))
                                 });
-                            } else if let Resource::Tracker(ref t) = **res {
-                                ::utils::insert_sorted(&mut self.trackers, t.clone(), |t, ex| {
+                            } else if let Resource::Tracker(t) = res {
+                                ::utils::insert_sorted(&mut self.trackers, t, |t, ex| {
                                     t.url.as_ref().unwrap().host_str().unwrap().cmp(&ex.url
                                         .as_ref()
                                         .unwrap()
                                         .host_str()
                                         .unwrap())
                                 });
-                            } else if let Resource::Server(ref s) = **res {
-                                self.server = s.clone();
+                            } else if let Resource::Server(s) = res {
+                                self.server = s;
                             }
                         }
                         _ => {
                             // TODO: Only match ids against sensible targets of each upd variant
                             if upd.id() == &*self.server.id {
-                                self.server.update(upd.clone());
+                                self.server.update(upd);
                                 continue 'UPDATES;
-                            }
-                            let mut was_torrent = false;
-                            for t in &mut self.torrents.1 {
-                                if upd.id() == &*t.id {
-                                    t.update(upd.clone());
-                                    was_torrent = true;
-                                    break;
-                                }
                             }
                             for t in &mut self.details.1 {
                                 if upd.id() == &*t.id {
                                     t.update(upd.clone());
+                                    // break here, because the id might also be in torrents
+                                    break;
+                                }
+                            }
+                            for t in &mut self.torrents.1 {
+                                if upd.id() == &*t.id {
+                                    t.update(upd);
                                     continue 'UPDATES;
                                 }
                             }
-                            if was_torrent {
-                                continue;
-                            }
                             for t in &mut self.trackers {
                                 if upd.id() == &*t.id {
-                                    t.update(upd.clone());
+                                    t.update(upd);
                                     continue 'UPDATES;
                                 }
                             }

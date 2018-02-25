@@ -347,7 +347,7 @@ impl HandleInput for Tabs {
 }
 
 impl HandleRpc for Tabs {
-    fn rpc(&mut self, ctx: &RpcContext, msg: &SMessage) -> bool {
+    fn rpc(&mut self, ctx: &RpcContext, msg: SMessage) -> bool {
         let mut res = false;
         if !self.tabs.is_empty() {
             if self.tabs.get_mut(self.active_idx).unwrap().rpc(ctx, msg) {
@@ -560,8 +560,8 @@ where
         self.top.init(ctx);
         self.below.init(ctx);
     }
-    fn rpc(&mut self, ctx: &RpcContext, msg: &SMessage) -> bool {
-        self.top.rpc(ctx, msg);
+    fn rpc(&mut self, ctx: &RpcContext, msg: SMessage) -> bool {
+        self.top.rpc(ctx, msg.clone());
         self.below.rpc(ctx, msg)
     }
 }
@@ -1014,7 +1014,7 @@ impl<T> HandleRpc for CloseOnInput<T>
 where
     T: Renderable + HandleRpc,
 {
-    fn rpc(&mut self, ctx: &RpcContext, msg: &SMessage) -> bool {
+    fn rpc(&mut self, ctx: &RpcContext, msg: SMessage) -> bool {
         self.content.rpc(ctx, msg)
     }
     fn init(&mut self, ctx: &RpcContext) {
@@ -1054,7 +1054,7 @@ impl<T> HandleRpc for IgnoreRpc<T>
 where
     T: Renderable,
 {
-    fn rpc(&mut self, _: &RpcContext, _: &SMessage) -> bool {
+    fn rpc(&mut self, _: &RpcContext, _: SMessage) -> bool {
         false
     }
     fn init(&mut self, _: &RpcContext) {}
@@ -1107,7 +1107,7 @@ impl<T> HandleRpc for IgnoreRpcPassInput<T>
 where
     T: Renderable + HandleInput,
 {
-    fn rpc(&mut self, _: &RpcContext, _: &SMessage) -> bool {
+    fn rpc(&mut self, _: &RpcContext, _: SMessage) -> bool {
         false
     }
     fn init(&mut self, _: &RpcContext) {}
@@ -1160,7 +1160,7 @@ impl<T> HandleRpc for IgnoreInputPassRpc<T>
 where
     T: Renderable + HandleRpc,
 {
-    fn rpc(&mut self, ctx: &RpcContext, msg: &SMessage) -> bool {
+    fn rpc(&mut self, ctx: &RpcContext, msg: SMessage) -> bool {
         self.content.rpc(ctx, msg)
     }
     fn init(&mut self, ctx: &RpcContext) {

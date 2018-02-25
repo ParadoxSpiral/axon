@@ -232,13 +232,13 @@ impl<'v> RpcContext<'v> {
 
                                             self.view.handle_rpc(
                                                 self,
-                                                &SMessage::ResourcesRemoved { serial, ids },
+                                                SMessage::ResourcesRemoved { serial, ids },
                                             );
                                         }
                                         _ => {
                                             #[cfg(feature = "dbg")]
                                             debug!(*::S_RPC, "Received: {:#?}", msg);
-                                            self.view.handle_rpc(self, &msg);
+                                            self.view.handle_rpc(self, msg);
                                         }
                                     });
                                 future::ok(())
