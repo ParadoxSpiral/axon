@@ -582,18 +582,32 @@ impl HandleInput for MainPanel {
                 _ => InputResult::Key(Key::Delete),
             },
             Key::Home => match self.focus {
+                Focus::Torrents => {
+                    self.torrents.0 = 0;
+                    InputResult::Rerender
+                }
+                Focus::Details => {
+                    self.details.0 = 0;
+                    InputResult::Rerender
+                }
                 Focus::Filter => {
                     self.filter.1.home();
                     InputResult::Rerender
                 }
-                _ => InputResult::Key(Key::Home),
             },
             Key::End => match self.focus {
+                Focus::Torrents => {
+                    self.torrents.0 = self.torrents.1.len().saturating_sub(1);
+                    InputResult::Rerender
+                }
+                Focus::Details => {
+                    self.details.0 = self.details.1.len() - 1;
+                    InputResult::Rerender
+                }
                 Focus::Filter => {
                     self.filter.1.end();
                     InputResult::Rerender
                 }
-                _ => InputResult::Key(Key::End),
             },
             Key::Char(k) => match self.focus {
                 Focus::Filter => {
