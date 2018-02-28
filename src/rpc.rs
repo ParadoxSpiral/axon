@@ -22,7 +22,6 @@ use futures::stream::{SplitSink, SplitStream};
 use futures::sync::mpsc::{self, Receiver, Sender};
 use parking_lot::Mutex;
 use serde_json;
-use synapse_rpc;
 use synapse_rpc::message::{CMessage, SMessage};
 use tokio::reactor::{Core, Timeout};
 use url::Url;
@@ -82,9 +81,10 @@ impl<'v> RpcContext<'v> {
     pub fn init(&self, mut srv: Url, pass: &str) -> Result<(), String> {
         #[cfg(feature = "dbg")]
         trace!(*::S_RPC, "Initiating ctx");
+        let mut core = self.core.borrow_mut();
         let url = srv.query_pairs_mut().append_pair("password", pass).finish();
+        #[allow(unused_mut)]
         let (sink, mut stream) = {
-            let mut core = self.core.borrow_mut();
             let timeout = Timeout::new(Duration::from_secs(10), &core.handle()).unwrap();
             let fut = ClientBuilder::new(url.as_str())
                 .map_err(|err| format!("{}", err))?
@@ -99,33 +99,51 @@ impl<'v> RpcContext<'v> {
                 _ => unreachable!(),
             }
         };
-        #[cfg(feature = "dbg")]
-        trace!(*::S_RPC, "Initiated ctx");
 
-        if let OwnedMessage::Text(msg) = stream
-            .by_ref()
-            .wait()
-            .next()
-            .unwrap()
-            .map_err(|err| format!("{:?}", err))?
+        // synulator doesn't send its RPC version
+        #[cfg(not(feature = "synulator"))]
         {
-            let srv_ver = serde_json::from_str::<synapse_rpc::message::Version>(&msg)
-                .map_err(|err| format!("{:?}", err))?;
-            if srv_ver.major != synapse_rpc::MAJOR_VERSION {
-                return Err(format!(
-                    "Server version {:?} incompatible with client {}.{}",
-                    srv_ver,
-                    synapse_rpc::MAJOR_VERSION,
-                    synapse_rpc::MINOR_VERSION
-                ));
+            use synapse_rpc;
+            use synapse_rpc::message::Version;
+
+            let timeout = Timeout::new(Duration::from_secs(10), &core.handle()).unwrap();
+            let fut = stream
+                .by_ref()
+                .into_future()
+                .map_err(|(err, _)| format!("{:?}", err))
+                .select2(
+                    timeout.map(|_| "Timeout while waiting for server version (10s)".to_owned()),
+                );
+            match core.run(fut) {
+                Ok(Either::A(((Some(OwnedMessage::Text(msg)), _), _))) => {
+                    match serde_json::from_str::<Version>(&msg) {
+                        Ok(ver) => {
+                            if ver.major != synapse_rpc::MAJOR_VERSION {
+                                return Err(format!(
+                                    "Server version {:?} incompatible with client {}.{}",
+                                    ver,
+                                    synapse_rpc::MAJOR_VERSION,
+                                    synapse_rpc::MINOR_VERSION
+                                ));
+                            }
+                            (*SERVER_VERSION.lock()) = format!("{}.{}", ver.major, ver.minor);
+                        }
+                        Err(e) => {
+                            return Err(format!("{}", e));
+                        }
+                    }
+                }
+                Ok(Either::B((err, _))) | Err(Either::A((err, _))) => {
+                    return Err(err);
+                }
+                _ => unreachable!(),
             }
-            (*SERVER_VERSION.lock()) = format!("{}.{}", srv_ver.major, srv_ver.minor);
-        } else {
-            return Err("Server sent non-text response, i.e. not its version".to_owned());
         }
 
         *self.socket.borrow_mut() = Some((RefCell::new(stream), Mutex::new(sink.wait())));
         self.wake();
+        #[cfg(feature = "dbg")]
+        trace!(*::S_RPC, "Initiated ctx");
         Ok(())
     }
 
@@ -224,7 +242,7 @@ impl<'v> RpcContext<'v> {
                                         }
                                         SMessage::ResourcesRemoved { serial, ids } => {
                                             #[cfg(feature = "dbg")]
-                                            debug!(*::S_RPC, "Received: {:#?}", msg);
+                                            debug!(*::S_RPC, "ResourcesRemoved: {:#?}", ids);
                                             self.send(CMessage::Unsubscribe {
                                                 serial: self.next_serial(),
                                                 ids: ids.clone(),

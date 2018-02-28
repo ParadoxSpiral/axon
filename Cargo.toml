@@ -26,3 +26,4 @@ slog-async = { version = "2", optional = true }
 
 [features]
 dbg = ["slog", "slog-term", "slog-async"] # Note that your server & pass will be in the debug log!
+synulator = [] # Disable waiting for an RPC version which synulator never sends
