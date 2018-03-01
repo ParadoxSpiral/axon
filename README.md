@@ -6,7 +6,7 @@ The synapse TUI client
 Note: Currently termion does not respect terminfo and uses ANSI color codes ([#106](https://github.com/ticki/termion/issues/106)).
 
 ## Keybindings
-- `^d` disconnects from the current server, and closes axon when in the login panel
+- `^q` disconnects from the current server, and closes axon when in the login panel
 - `F5` runs a render pass (mainly useful if the terminal size got changed)
 - `H` switches panel focus left, `K` up, `L` right, `J` down. The lowercase variants may switch items
 - `\n` confirms an action, or engages focus

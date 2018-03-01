@@ -115,11 +115,11 @@ impl View {
     pub fn handle_input(&self, ctx: &RpcContext, k: Key) -> InputResult {
         let size = termion::terminal_size().unwrap_or((0, 0));
         match k {
-            Key::Ctrl('d') => if !*self.logged_in.borrow() {
+            Key::Ctrl('q') => if !*self.logged_in.borrow() {
                 InputResult::Close
             } else {
                 ctx.wake();
-                self.server_close(None);
+                self.connection_close(None);
                 InputResult::Rerender
             },
             Key::F(5) => InputResult::Rerender,
@@ -195,7 +195,7 @@ impl View {
         ManuallyDrop::new(mem::replace(&mut *cnt, new));
     }
 
-    pub fn server_close(&self, data: Option<websocket::CloseData>) {
+    pub fn connection_close(&self, data: Option<websocket::CloseData>) {
         let mut cnt = self.content.lock();
         *self.logged_in.borrow_mut() = false;
         let msg = data.map(|d| format!("{:?}", d))
@@ -204,7 +204,7 @@ impl View {
             &mut *cnt,
             DisplayState::GlobalErr(
                 msg,
-                Some("Server closed".to_owned()),
+                Some("Connection closed".to_owned()),
                 Box::new(widgets::IgnoreRpcPassInput::new(tui::LoginPanel::new())),
             ),
         );

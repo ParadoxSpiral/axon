@@ -222,7 +222,7 @@ impl<'v> RpcContext<'v> {
                             OwnedMessage::Close(data) => {
                                 #[cfg(feature = "dbg")]
                                 debug!(*::S_RPC, "Server closed: {:?}", data);
-                                self.view.server_close(data);
+                                self.view.connection_close(data);
                                 future::err(())
                             }
                             OwnedMessage::Text(s) => {
