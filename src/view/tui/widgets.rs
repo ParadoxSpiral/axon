@@ -390,12 +390,14 @@ where
         name: J,
     ) -> BorrowedOverlay<'a, T, B, C> {
         assert!(top_dimensions.0 > 0 && top_dimensions.1 > 0);
+        let name = name.into();
+        name.map(|n| assert!((n.len() as u16) < top_dimensions.0));
         BorrowedOverlay {
             top,
             below,
             top_dimensions,
             box_color,
-            name: name.into(),
+            name,
         }
     }
 }

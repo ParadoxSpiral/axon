@@ -23,6 +23,7 @@ use termion::raw::{IntoRawMode, RawTerminal};
 use websocket;
 
 use std::cell::RefCell;
+use std::cmp;
 use std::io::{self, Stdout, Write};
 use std::mem::{self, ManuallyDrop};
 use std::sync::atomic::Ordering;
@@ -84,7 +85,11 @@ impl View {
                     widgets::BorrowedOverlay::new(
                         &mut widgets::Text::<_, align::x::Center, align::y::Top>::new(true, &**err),
                         &mut **cmp,
-                        (err.len() as u16 + 2, 1),
+                        (
+                            cmp::max(err.len(), err_name.as_ref().map(|n| n.len()).unwrap_or(0))
+                                as u16 + 2,
+                            1,
+                        ),
                         Some(&termion::color::Red),
                         err_name.as_ref().map(|o| &o[..]),
                     ).render(&mut buf, width, height, 1, 1);
