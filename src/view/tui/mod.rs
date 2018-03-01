@@ -22,6 +22,7 @@ use termion::{color, cursor};
 use termion::event::Key;
 use url::Url;
 
+use std::cmp::Ordering;
 use std::io::Write;
 
 use rpc::RpcContext;
@@ -225,7 +226,8 @@ struct MainPanel {
     focus: Focus,
     filter: (bool, Filter),
     torrents: (usize, Vec<Torrent>),
-    trackers: Vec<Tracker>,
+    // tracker base, (tracker id, torrent id)
+    trackers: Vec<(Tracker, Vec<(String, String)>)>,
     trackers_displ: bool,
     details: (usize, Vec<Torrent>),
     server: Server,
@@ -348,18 +350,13 @@ impl HandleInput for MainPanel {
                         }.and_then(|tor| {
                             self.trackers
                                 .iter()
-                                .find(|tra| tor.id == tra.torrent_id)
-                                .and_then(|tra| {
-                                    tra.error
-                                        .as_ref()
-                                        .or_else(|| {
-                                            self.trackers
-                                                .iter()
-                                                .find(|t| tra.url == t.url && t.error.is_some())
-                                                .and_then(|t| t.error.as_ref())
-                                        })
-                                        .map(|e| e.clone())
+                                .find(|&&(ref tra, ref other_tra)| {
+                                    tor.id == tra.torrent_id
+                                        || other_tra
+                                            .binary_search_by(|&(_, ref t)| t.cmp(&tor.id))
+                                            .is_ok()
                                 })
+                                .and_then(|tra| tra.0.error.clone())
                         })
                             .and_then(|e| {
                                 let l = e.len();
@@ -392,15 +389,16 @@ impl HandleInput for MainPanel {
                         }.and_then(|t| t.error.as_ref())
                             .and_then(|e| {
                                 Some(InputResult::ReplaceWith(Box::new(widgets::OwnedOverlay::new(
-                            widgets::CloseOnInput::new(widgets::IgnoreRpc::new(
-                                widgets::Text::<_, align::x::Center, align::y::Top>::new(true, e.clone()),
-                            )),
-                            // FIXME: There has to be a better way than cloning self
-                            Box::new(widgets::IgnoreInputPassRpc::new(self.clone())),
-                            (e.len() as u16 + 2, 1),
-                            color::Red,
-                            "Torrent".to_owned(),
-                        )) as Box<Component>))
+                                widgets::CloseOnInput::new(widgets::IgnoreRpc::new(
+                                    widgets::Text::<_, align::x::Center,
+                                                align::y::Top>::new(true, e.clone()),
+                                )),
+                                // FIXME: There has to be a better way than cloning self
+                                Box::new(widgets::IgnoreInputPassRpc::new(self.clone())),
+                                (e.len() as u16 + 2, 1),
+                                color::Red,
+                                "Torrent".to_owned(),
+                            )) as Box<Component>))
                             })
                             .unwrap_or(InputResult::Key(Key::Char('e')))
                     }
@@ -669,24 +667,16 @@ impl Renderable for MainPanel {
                 Focus::Torrents | Focus::Filter => self.torrents.1.get(self.torrents.0),
                 Focus::Details => self.details.1.get(self.details.0).map(|d| d),
             };
-            let mut trackers: Vec<(_, Tracker, Vec<String>)> =
-                Vec::with_capacity(self.trackers.len());
-            for t in self.trackers
-                .iter()
-                .filter(|t| self.torrents.1.iter().any(|tor| tor.id == t.torrent_id))
+            for (i, &(ref base_trac, ref others)) in
+                self.trackers.iter().take(height as _).enumerate()
             {
-                if let Some(pos) = trackers.iter().position(|ex| ex.1.url == t.url) {
-                    trackers[pos].0 += 1;
-                    trackers[pos].2.push(t.torrent_id.clone());
-                } else {
-                    trackers.push((1, t.clone(), Vec::new()));
-                }
-            }
-            for (i, &(count, ref t, ref tors)) in trackers.iter().take(height as _).enumerate() {
                 let matches = sel_tor
-                    .map(|s| s.id == t.torrent_id || tors.contains(&s.id))
+                    .map(|s| {
+                        s.id == base_trac.torrent_id
+                            || others.binary_search_by(|&(_, ref t)| t.cmp(&s.id)).is_ok()
+                    })
                     .unwrap_or(false);
-                let (c_s, c_e) = match (matches, t.error.is_some()) {
+                let (c_s, c_e) = match (matches, base_trac.error.is_some()) {
                     (true, true) => (
                         format!("{}{}", color::Fg(color::Cyan), color::Bg(color::Red)),
                         format!("{}{}", color::Fg(color::Reset), color::Bg(color::Reset)),
@@ -704,10 +694,11 @@ impl Renderable for MainPanel {
                 widgets::Text::<_, align::x::Left, align::y::Top>::new(
                     true,
                     format!(
-                        "{}({}) {}{}",
+                        "{}{} {}{}",
                         c_s,
-                        count,
-                        t.url
+                        others.len() + 1,
+                        base_trac
+                            .url
                             .as_ref()
                             .map(|u| u.host_str().unwrap())
                             .unwrap_or_else(|| "?.?"),
@@ -859,7 +850,7 @@ impl HandleRpc for MainPanel {
                 let idx = self.torrents.0;
                 self.torrents.1.retain(|t| {
                     i += 1;
-                    if ids.iter().any(|i| t.id == *i) {
+                    if ids.contains(&t.id) {
                         if i - 1 == idx && i != 1 {
                             dec += 1;
                         }
@@ -877,7 +868,7 @@ impl HandleRpc for MainPanel {
                 let idx = self.details.0;
                 self.details.1.retain(|t| {
                     i += 1;
-                    if ids.iter().any(|i| t.id == *i) {
+                    if ids.contains(&t.id) {
                         if i - 1 == idx && i != 1 {
                             dec += 1;
                         }
@@ -893,7 +884,40 @@ impl HandleRpc for MainPanel {
                     self.focus = Focus::Torrents;
                 }
 
-                self.trackers.retain(|t| !ids.iter().any(|i| t.id == *i));
+                // FIXME: Once retain is fixed, use two nested .retains
+                let mut idx = 0;
+                while idx < self.trackers.len() {
+                    let mut rm = false;
+
+                    {
+                        let (ref mut base, ref mut others) = self.trackers[idx];
+
+                        others.retain(
+                            |&(ref tra_id, _)| {
+                                if ids.contains(&tra_id) {
+                                    false
+                                } else {
+                                    true
+                                }
+                            },
+                        );
+
+                        if ids.contains(&base.id) {
+                            if others.is_empty() {
+                                rm = true;
+                            } else {
+                                let last = others.pop().unwrap();
+                                base.id = last.0;
+                                base.torrent_id = last.1;
+                            }
+                        }
+                    }
+
+                    if rm {
+                        self.trackers.remove(idx);
+                    }
+                    idx += 1;
+                }
 
                 true
             }
@@ -910,13 +934,27 @@ impl HandleRpc for MainPanel {
                                         .cmp(&ex.name.as_ref().map(|n| n.to_lowercase()))
                                 });
                             } else if let Resource::Tracker(t) = res {
-                                ::utils::insert_sorted(&mut self.trackers, t, |t, ex| {
-                                    t.url.as_ref().unwrap().host_str().unwrap().cmp(&ex.url
-                                        .as_ref()
-                                        .unwrap()
-                                        .host_str()
-                                        .unwrap())
-                                });
+                                let mut new_pos = self.trackers.len();
+                                for (i, &mut (ref mut base, ref mut others)) in
+                                    self.trackers.iter_mut().enumerate()
+                                {
+                                    match t.url.cmp(&base.url) {
+                                        Ordering::Equal => {
+                                            ::utils::insert_sorted(
+                                                others,
+                                                (t.id, t.torrent_id),
+                                                |t, ex| t.1.cmp(&ex.1),
+                                            );
+                                            continue 'UPDATES;
+                                        }
+                                        Ordering::Less => {
+                                            new_pos = i;
+                                            break;
+                                        }
+                                        _ => {}
+                                    }
+                                }
+                                self.trackers.insert(new_pos, (t, Vec::new()));
                             } else if let Resource::Server(s) = res {
                                 self.server = s;
                             }
@@ -940,9 +978,11 @@ impl HandleRpc for MainPanel {
                                     continue 'UPDATES;
                                 }
                             }
-                            for t in &mut self.trackers {
-                                if upd.id() == &*t.id {
-                                    t.update(upd);
+                            for &mut (ref mut base, ref others) in &mut self.trackers {
+                                if upd.id() == &base.id
+                                    || others.iter().any(|&(ref tra_id, _)| upd.id() == &*tra_id)
+                                {
+                                    base.update(upd);
                                     continue 'UPDATES;
                                 }
                             }
@@ -1012,7 +1052,7 @@ impl Renderable for TorrentDetailsPanel {
                         } else {
                             t.file_size(sopt::DECIMAL).unwrap()
                         })
-                        .unwrap_or("srv".into()),
+                        .unwrap_or("inherit".into()),
                     self.torr.rate_down.file_size(sopt::DECIMAL).unwrap(),
                     self.torr
                         .throttle_down
@@ -1021,7 +1061,7 @@ impl Renderable for TorrentDetailsPanel {
                         } else {
                             t.file_size(sopt::DECIMAL).unwrap()
                         })
-                        .unwrap_or("srv".into()),
+                        .unwrap_or("inherit".into()),
                     self.torr.transferred_up.file_size(sopt::DECIMAL).unwrap(),
                     self.torr.transferred_down.file_size(sopt::DECIMAL).unwrap(),
                 ),
