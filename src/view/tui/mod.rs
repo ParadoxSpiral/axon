@@ -371,7 +371,7 @@ impl HandleInput for MainPanel {
                             "Tracker".to_owned(),
                         )) as Box<Component>))
                             })
-                            .unwrap_or(InputResult::Key(Key::Char('e')))
+                            .unwrap_or(InputResult::Key(Key::Char('E')))
                     }
                     Focus::Filter => {
                         f_push!(self, ctx, 'E');
