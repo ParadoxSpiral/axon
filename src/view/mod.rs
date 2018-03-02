@@ -203,7 +203,7 @@ impl View {
     pub fn connection_close(&self, data: Option<websocket::CloseData>) {
         let mut cnt = self.content.lock();
         *self.logged_in.borrow_mut() = false;
-        let msg = data.map(|d| format!("{:?}", d))
+        let msg = data.map(|d| format!("{}", d.reason))
             .unwrap_or_else(|| "Disconnected".to_owned());
         mem::replace(
             &mut *cnt,

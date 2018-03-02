@@ -624,6 +624,9 @@ impl Renderable for MainPanel {
         "torrents".into()
     }
     fn render(&mut self, target: &mut Vec<u8>, width: u16, height: u16, x_off: u16, y_off: u16) {
+        if &self.server_version == "?.?" {
+            self.server_version = ::rpc::SERVER_VERSION.lock().clone();
+        }
         let draw_torrents = |target: &mut _, width, height, x, y| {
             let ceil = if self.filter.0 { height - 1 } else { height };
             for (i, t) in self.torrents.1.iter().take(ceil as _).enumerate() {

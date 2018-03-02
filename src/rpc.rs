@@ -22,10 +22,11 @@ use futures::stream::{SplitSink, SplitStream};
 use futures::sync::mpsc::{self, Receiver, Sender};
 use parking_lot::Mutex;
 use serde_json;
+use synapse_rpc;
 use synapse_rpc::message::{CMessage, SMessage};
 use tokio::reactor::{Core, Timeout};
 use url::Url;
-use websocket::ClientBuilder;
+use websocket::{ClientBuilder, CloseData};
 use websocket::async::{MessageCodec, Stream};
 use websocket::async::client::Framed;
 use websocket::message::OwnedMessage;
@@ -38,7 +39,7 @@ use std::time::Duration;
 use view::View;
 
 lazy_static!(
-    pub static ref SERVER_VERSION: Mutex<String> = Mutex::new("".to_owned());
+    pub static ref SERVER_VERSION: Mutex<String> = Mutex::new("?.?".to_owned());
 );
 
 type InnerStream = Framed<Box<Stream + Send>, MessageCodec<OwnedMessage>>;
@@ -99,46 +100,6 @@ impl<'v> RpcContext<'v> {
                 _ => unreachable!(),
             }
         };
-
-        // synulator doesn't send its RPC version
-        #[cfg(not(feature = "synulator"))]
-        {
-            use synapse_rpc;
-            use synapse_rpc::message::Version;
-
-            let timeout = Timeout::new(Duration::from_secs(10), &core.handle()).unwrap();
-            let fut = stream
-                .by_ref()
-                .into_future()
-                .map_err(|(err, _)| format!("{:?}", err))
-                .select2(
-                    timeout.map(|_| "Timeout while waiting for server version (10s)".to_owned()),
-                );
-            match core.run(fut) {
-                Ok(Either::A(((Some(OwnedMessage::Text(msg)), _), _))) => {
-                    match serde_json::from_str::<Version>(&msg) {
-                        Ok(ver) => {
-                            if ver.major != synapse_rpc::MAJOR_VERSION {
-                                return Err(format!(
-                                    "Server version {:?} incompatible with client {}.{}",
-                                    ver,
-                                    synapse_rpc::MAJOR_VERSION,
-                                    synapse_rpc::MINOR_VERSION
-                                ));
-                            }
-                            (*SERVER_VERSION.lock()) = format!("{}.{}", ver.major, ver.minor);
-                        }
-                        Err(e) => {
-                            return Err(format!("{}", e));
-                        }
-                    }
-                }
-                Ok(Either::B((err, _))) | Err(Either::A((err, _))) => {
-                    return Err(err);
-                }
-                _ => unreachable!(),
-            }
-        }
 
         *self.socket.borrow_mut() = Some((RefCell::new(stream), Mutex::new(sink.wait())));
         self.wake();
@@ -225,42 +186,65 @@ impl<'v> RpcContext<'v> {
                                 self.view.connection_close(data);
                                 future::err(())
                             }
-                            OwnedMessage::Text(s) => {
-                                let _ = serde_json::from_str::<SMessage>(&s)
-                                    .map_err(|e| {
-                                        self.view
-                                            .global_err(format!("{}", e.description()), Some("RPC"))
-                                    })
-                                    .map(|msg| match msg {
-                                        SMessage::ResourcesExtant { ids, .. } => {
-                                            self.send(CMessage::Subscribe {
-                                                serial: self.next_serial(),
-                                                ids: ids.iter()
-                                                    .map(|id| (&**id).to_owned())
-                                                    .collect(),
-                                            });
-                                        }
-                                        SMessage::ResourcesRemoved { serial, ids } => {
-                                            #[cfg(feature = "dbg")]
-                                            debug!(*::S_RPC, "ResourcesRemoved: {:#?}", ids);
-                                            self.send(CMessage::Unsubscribe {
-                                                serial: self.next_serial(),
-                                                ids: ids.clone(),
-                                            });
+                            OwnedMessage::Text(s) => match serde_json::from_str::<SMessage>(&s) {
+                                Err(e) => {
+                                    self.view
+                                        .global_err(format!("{}", e.description()), Some("RPC"));
+                                    future::ok(())
+                                }
+                                Ok(msg) => match msg {
+                                    SMessage::ResourcesExtant { ids, .. } => {
+                                        self.send(CMessage::Subscribe {
+                                            serial: self.next_serial(),
+                                            ids: ids.iter().map(|id| (&**id).to_owned()).collect(),
+                                        });
+                                        future::ok(())
+                                    }
+                                    SMessage::ResourcesRemoved { serial, ids } => {
+                                        #[cfg(feature = "dbg")]
+                                        debug!(*::S_RPC, "ResourcesRemoved: {:#?}", ids);
+                                        self.send(CMessage::Unsubscribe {
+                                            serial: self.next_serial(),
+                                            ids: ids.clone(),
+                                        });
 
-                                            self.view.handle_rpc(
-                                                self,
-                                                SMessage::ResourcesRemoved { serial, ids },
-                                            );
-                                        }
-                                        _ => {
+                                        self.view.handle_rpc(
+                                            self,
+                                            SMessage::ResourcesRemoved { serial, ids },
+                                        );
+                                        future::ok(())
+                                    }
+                                    SMessage::RpcVersion(ver) => {
+                                        if ver.major != synapse_rpc::MAJOR_VERSION {
+                                            self.view.connection_close(Some(CloseData::new(
+                                                1,
+                                                format!(
+                                                    "Server version {:?} \
+                                                     incompatible with client {}.{}",
+                                                    ver,
+                                                    synapse_rpc::MAJOR_VERSION,
+                                                    synapse_rpc::MINOR_VERSION
+                                                ),
+                                            )));
                                             #[cfg(feature = "dbg")]
-                                            debug!(*::S_RPC, "Received: {:#?}", msg);
-                                            self.view.handle_rpc(self, msg);
+                                            warn!(*::S_RPC, "RPC version mismatch");
+                                            future::err(())
+                                        } else {
+                                            #[cfg(feature = "dbg")]
+                                            debug!(*::S_RPC, "RPC version match");
+                                            (*SERVER_VERSION.lock()) =
+                                                format!("{}.{}", ver.major, ver.minor);
+                                            future::ok(())
                                         }
-                                    });
-                                future::ok(())
-                            }
+                                    }
+                                    _ => {
+                                        #[cfg(feature = "dbg")]
+                                        debug!(*::S_RPC, "Received: {:#?}", msg);
+                                        self.view.handle_rpc(self, msg);
+                                        future::ok(())
+                                    }
+                                },
+                            },
                             _ => unreachable!(),
                         },
                         StreamRes::Close => future::err(()),
@@ -276,6 +260,7 @@ impl<'v> RpcContext<'v> {
                 #[cfg(feature = "dbg")]
                 info!(*::S_RPC, "Rejiggering for new server");
                 *self.socket.borrow_mut() = None;
+                *SERVER_VERSION.lock() = "?.?".to_owned();
                 continue;
             } else {
                 #[cfg(feature = "dbg")]
