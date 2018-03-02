@@ -925,16 +925,36 @@ impl HandleRpc for MainPanel {
                 true
             }
             SMessage::UpdateResources { resources, .. } => {
+                let mut name_cache = if resources
+                    .first()
+                    .map(|r| {
+                        if let &SResourceUpdate::Resource(ref r) = r {
+                            r.kind() == ResourceKind::Torrent
+                        } else {
+                            false
+                        }
+                    })
+                    .unwrap_or(false)
+                {
+                    Some(::std::collections::HashMap::with_capacity(resources.len()))
+                } else {
+                    None
+                };
                 'UPDATES: for upd in resources {
                     match upd {
                         SResourceUpdate::Resource(res) => {
                             let res = res.into_owned();
                             if let Resource::Torrent(t) = res {
-                                ::utils::insert_sorted(&mut self.torrents.1, t, |t, ex| {
-                                    t.name
-                                        .as_ref()
-                                        .map(|n| n.to_lowercase())
-                                        .cmp(&ex.name.as_ref().map(|n| n.to_lowercase()))
+                                let mut cmp_t = t.clone();
+                                cmp_t.name = cmp_t.name.as_ref().map(|n| n.to_lowercase());
+                                ::utils::insert_sorted(&mut self.torrents.1, t, cmp_t, |t, ex| {
+                                    t.name.as_mut().cmp(&ex.name.as_ref().map(|n| {
+                                        name_cache
+                                            .as_mut()
+                                            .unwrap()
+                                            .entry(ex.id.clone())
+                                            .or_insert_with(|| n.to_lowercase())
+                                    }))
                                 });
                             } else if let Resource::Tracker(t) = res {
                                 let mut new_pos = self.trackers.len();
@@ -945,6 +965,7 @@ impl HandleRpc for MainPanel {
                                         Ordering::Equal => {
                                             ::utils::insert_sorted(
                                                 others,
+                                                (t.id.clone(), t.torrent_id.clone()),
                                                 (t.id, t.torrent_id),
                                                 |t, ex| t.1.cmp(&ex.1),
                                             );

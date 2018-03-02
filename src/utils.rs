@@ -161,15 +161,15 @@ pub fn date_diff_now(date: DateTime<Utc>) -> String {
     res + &*format!("{:0>2}:{:0>2}:{:0>2}", h, m, s)
 }
 
-pub fn insert_sorted<T: ::std::fmt::Debug, F>(v: &mut Vec<T>, e: T, cmp_fn: F)
+pub fn insert_sorted<T: ::std::fmt::Debug, F>(v: &mut Vec<T>, ins: T, mut cmp_t: T, mut cmp_fn: F)
 where
-    F: Fn(&T, &T) -> Ordering,
+    F: FnMut(&mut T, &mut T) -> Ordering,
 {
     #[cfg(feature = "dbg")]
     trace!(*::S_VIEW, "Sort in: {:?}", v);
     let mut pos = v.len();
-    for (i, ex_e) in v.iter().enumerate() {
-        match cmp_fn(&e, ex_e) {
+    for (i, ex_e) in v.iter_mut().enumerate() {
+        match cmp_fn(&mut cmp_t, ex_e) {
             Ordering::Equal | Ordering::Less => {
                 pos = i;
                 break;
@@ -177,7 +177,7 @@ where
             _ => {}
         }
     }
-    v.insert(pos, e);
+    v.insert(pos, ins);
     #[cfg(feature = "dbg")]
     trace!(*::S_VIEW, "Inserted at: {}", pos);
 }
