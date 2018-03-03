@@ -97,7 +97,7 @@ pub mod align {
     }
 }
 
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, Local, Utc};
 use synapse_rpc::criterion::{Criterion, Operation, Value};
 use synapse_rpc::message::CMessage;
 use synapse_rpc::resource::ResourceKind;
@@ -135,7 +135,7 @@ pub fn count(l: &str) -> usize {
 }
 
 pub fn date_diff_now(date: DateTime<Utc>) -> String {
-    let dur = Utc::now().signed_duration_since(date);
+    let dur = Local::now().signed_duration_since(date);
     let w = dur.num_weeks();
     let d = dur.num_days() - dur.num_weeks() * 7;
     let h = dur.num_hours() - dur.num_days() * 24;
