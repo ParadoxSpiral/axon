@@ -82,26 +82,32 @@ impl<'v> RpcContext<'v> {
     pub fn init(&self, mut srv: Url, pass: &str) -> Result<(), String> {
         #[cfg(feature = "dbg")]
         trace!(*::S_RPC, "Initiating ctx");
-        let mut core = self.core.borrow_mut();
-        let url = srv.query_pairs_mut().append_pair("password", pass).finish();
-        #[allow(unused_mut)]
-        let (sink, mut stream) = {
-            let timeout = Timeout::new(Duration::from_secs(10), &core.handle()).unwrap();
-            let fut = ClientBuilder::new(url.as_str())
-                .map_err(|err| format!("{}", err))?
-                .async_connect(None, &core.handle())
-                .map_err(|err| format!("{:?}", err))
-                .select2(timeout.map(|_| "Timeout while connecting to server (10s)".to_owned()));
-            match core.run(fut) {
-                Ok(Either::A(((client, _), _))) => client.split(),
-                Ok(Either::B((err, _))) | Err(Either::A((err, _))) => {
-                    return Err(err);
+        // This borrow limits the scope of core, which otherwise
+        // may be borrowed as a consequence of self.wake() without being dropped first
+        {
+            let mut core = self.core.borrow_mut();
+            let url = srv.query_pairs_mut().append_pair("password", pass).finish();
+            #[allow(unused_mut)]
+            let (sink, mut stream) = {
+                let timeout = Timeout::new(Duration::from_secs(10), &core.handle()).unwrap();
+                let fut = ClientBuilder::new(url.as_str())
+                    .map_err(|err| format!("{}", err))?
+                    .async_connect(None, &core.handle())
+                    .map_err(|err| format!("{:?}", err))
+                    .select2(
+                        timeout.map(|_| "Timeout while connecting to server (10s)".to_owned()),
+                    );
+                match core.run(fut) {
+                    Ok(Either::A(((client, _), _))) => client.split(),
+                    Ok(Either::B((err, _))) | Err(Either::A((err, _))) => {
+                        return Err(err);
+                    }
+                    _ => unreachable!(),
                 }
-                _ => unreachable!(),
-            }
-        };
+            };
+            *self.socket.borrow_mut() = Some((RefCell::new(stream), Mutex::new(sink.wait())));
+        }
 
-        *self.socket.borrow_mut() = Some((RefCell::new(stream), Mutex::new(sink.wait())));
         self.wake();
         #[cfg(feature = "dbg")]
         trace!(*::S_RPC, "Initiated ctx");

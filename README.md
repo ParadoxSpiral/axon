@@ -18,12 +18,14 @@ Torrent panel:
 - `esc` clears the filter, if selected
 - `d` opens the selected torrents' details
 - `t` toggles displayal of the list of trackers
-- `E` display the error of the currently selected torrent's tracker
+- `E` display errors of the currently selected torrent's trackers
 - `e` display the error of the currently selected torrent
 - `PgUp/Down` scrolls by one panel height
 
 Torrent details:
 - `q` closes the current details pane
+- `E` display errors of the currently selected torrent's trackers
+- `e` display the error of the currently selected torrent
 
 # Windows
 Termion currently does not support windows, but might in the future ([#103](https://github.com/ticki/termion/issues/103)).
