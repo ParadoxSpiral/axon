@@ -22,7 +22,7 @@ use unicode_segmentation::UnicodeSegmentation;
 use std::borrow::{Borrow, BorrowMut};
 use std::io::Write;
 use std::marker::PhantomData;
-use std::mem::{self, ManuallyDrop};
+use std::mem::ManuallyDrop;
 use std::str;
 
 use rpc::RpcContext;
@@ -212,32 +212,39 @@ where
     }
 }
 
-pub struct Tabs {
-    tabs: Vec<Box<Component>>,
+pub struct BorrowedSameTabs<'a, T: 'a>
+where
+    T: Renderable + 'a,
+{
+    tabs: &'a mut [T],
     active_idx: usize,
 }
-impl Tabs {
-    pub fn new(tabs: Vec<Box<Component>>, active: usize) -> Tabs {
-        Tabs {
+impl<'a, T> BorrowedSameTabs<'a, T>
+where
+    T: Renderable + 'a,
+{
+    pub fn new(tabs: &'a mut [T], active: usize) -> BorrowedSameTabs<'a, T> {
+        BorrowedSameTabs {
             tabs,
             active_idx: active,
         }
     }
 }
 
-impl Component for Tabs {}
-
-impl Renderable for Tabs {
+impl<'a, T> Renderable for BorrowedSameTabs<'a, T>
+where
+    T: Renderable + 'a,
+{
     fn name(&self) -> String {
         if self.tabs.len() == 1 {
-            format!("{}", self.tabs.first().unwrap().name())
+            format!("{}", self.tabs.first().unwrap().borrow().name())
         } else {
             let mut names = String::new();
             for (i, c) in self.tabs.iter().enumerate() {
                 if i > 0 {
                     names.push_str(" | ");
                 }
-                names.push_str(&c.name());
+                names.push_str(&c.borrow().name());
             }
             format!("tabs: {}", names)
         }
@@ -249,14 +256,14 @@ impl Renderable for Tabs {
         let n_tabs = self.tabs.len();
         let sec_len = width / n_tabs as u16;
         // FIXME: NLL (probably)
-        let div_budget = "─".repeat(width.saturating_sub(
-            self.tabs
-                .iter()
-                .fold(0, |acc, t| acc + utils::count_without_styling(&t.name())),
-        ) as usize);
+        let div_budget = "─".repeat(width.saturating_sub(self.tabs.iter().fold(0, |acc, t| {
+            acc + utils::count_without_styling(&t.borrow().name())
+        })) as usize);
         let mut div_budget = div_budget.chars();
         let div_budget = div_budget.by_ref();
-        for (i, t) in self.tabs.iter().enumerate() {
+        let n_tabs = self.tabs.len();
+        for (i, t) in self.tabs.iter_mut().enumerate() {
+            let t = (*t).borrow_mut();
             let div_len = sec_len.saturating_sub(utils::count_without_styling(&t.name())) / 2;
             write!(
                 target,
@@ -279,7 +286,7 @@ impl Renderable for Tabs {
             write!(
                 target,
                 "{}{}",
-                if i + 1 == self.tabs.len() {
+                if i + 1 == n_tabs {
                     div_budget.as_str().to_owned()
                 } else {
                     div_budget.take(div_len as usize + 1).collect()
@@ -293,73 +300,11 @@ impl Renderable for Tabs {
         }
 
         // Draw active component
-        self.tabs.get_mut(self.active_idx).unwrap().render(
-            target,
-            width,
-            height - 1,
-            x_off,
-            y_off + 1,
-        );
-    }
-}
-
-impl HandleInput for Tabs {
-    fn input(&mut self, ctx: &RpcContext, k: Key, w: u16, h: u16) -> InputResult {
-        let len = self.tabs.len();
-
-        match self.tabs
+        self.tabs
             .get_mut(self.active_idx)
             .unwrap()
-            .input(ctx, k, w, h)
-        {
-            InputResult::Key(Key::Char('l')) => if self.active_idx + 1 < len {
-                self.active_idx += 1;
-                InputResult::Rerender
-            } else {
-                InputResult::Key(Key::Char('l'))
-            },
-            InputResult::Key(Key::Char('h')) => if self.active_idx > 0 {
-                self.active_idx -= 1;
-                InputResult::Rerender
-            } else {
-                InputResult::Key(Key::Char('h'))
-            },
-            InputResult::Close => if len == 2 {
-                InputResult::ReplaceWith(if self.active_idx == 0 {
-                    self.tabs.remove(1)
-                } else {
-                    self.tabs.remove(0)
-                })
-            } else {
-                if self.active_idx == len - 1 {
-                    self.active_idx -= 1;
-                }
-                self.tabs.remove(self.active_idx);
-                InputResult::Rerender
-            },
-            InputResult::ReplaceWith(cmp) => {
-                let _ = mem::replace(&mut *self.tabs.get_mut(self.active_idx).unwrap(), cmp);
-                InputResult::Rerender
-            }
-            ret => ret,
-        }
-    }
-}
-
-impl HandleRpc for Tabs {
-    fn rpc(&mut self, ctx: &RpcContext, msg: SMessage) -> bool {
-        let mut res = false;
-        if !self.tabs.is_empty() {
-            if self.tabs.get_mut(self.active_idx).unwrap().rpc(ctx, msg) {
-                res = true;
-            }
-        }
-        res
-    }
-    fn init(&mut self, ctx: &RpcContext) {
-        for t in &mut self.tabs {
-            t.init(ctx);
-        }
+            .borrow_mut()
+            .render(target, width, height - 1, x_off, y_off + 1);
     }
 }
 
