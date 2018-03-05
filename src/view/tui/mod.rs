@@ -22,6 +22,7 @@ use termion::{color, cursor};
 use termion::event::Key;
 use url::Url;
 
+use std::collections::HashMap;
 use std::cmp::Ordering;
 use std::io::Write;
 
@@ -388,17 +389,21 @@ impl HandleInput for MainPanel {
                             self.details.1.get(self.details.0)
                         }.and_then(|t| t.error.as_ref())
                             .and_then(|e| {
-                                Some(InputResult::ReplaceWith(Box::new(widgets::OwnedOverlay::new(
-                                widgets::CloseOnInput::new(widgets::IgnoreRpc::new(
-                                    widgets::Text::<_, align::x::Center,
-                                                align::y::Top>::new(true, e.clone()),
-                                )),
-                                // FIXME: There has to be a better way than cloning self
-                                Box::new(widgets::IgnoreInputPassRpc::new(self.clone())),
-                                (e.len() as u16 + 2, 1),
-                                color::Red,
-                                "Torrent".to_owned(),
-                            )) as Box<Component>))
+                                Some(InputResult::ReplaceWith(
+                                Box::new(widgets::OwnedOverlay::new(
+                                    widgets::CloseOnInput::new(widgets::IgnoreRpc::new(
+                                        widgets::Text::<_, align::x::Center, align::y::Top>::new(
+                                            true,
+                                            e.clone(),
+                                        ),
+                                    )),
+                                    // FIXME: There has to be a better way than cloning self
+                                    Box::new(widgets::IgnoreInputPassRpc::new(self.clone())),
+                                    (e.len() as u16 + 2, 1),
+                                    color::Red,
+                                    "Torrent".to_owned(),
+                                )) as Box<Component>,
+                            ))
                             })
                             .unwrap_or(InputResult::Key(Key::Char('e')))
                     }
@@ -918,8 +923,9 @@ impl HandleRpc for MainPanel {
 
                     if rm {
                         self.trackers.remove(idx);
+                    } else {
+                        idx += 1;
                     }
-                    idx += 1;
                 }
 
                 true
@@ -936,7 +942,7 @@ impl HandleRpc for MainPanel {
                     })
                     .unwrap_or(false)
                 {
-                    Some(::std::collections::HashMap::with_capacity(resources.len()))
+                    Some(HashMap::with_capacity(resources.len()))
                 } else {
                     None
                 };
