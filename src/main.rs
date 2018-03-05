@@ -79,11 +79,39 @@ lazy_static!(
         "RPC version" => format!("{}.{}", synapse_rpc::MAJOR_VERSION, synapse_rpc::MINOR_VERSION)));
     static ref S_VIEW: slog::Logger = (*SLOG_ROOT).new(o!("View" => true));
     static ref S_IO: slog::Logger = (*SLOG_ROOT).new(o!("IO" => true));
+    static ref S_DEADLOCK: slog::Logger = (*SLOG_ROOT).new(o!("DEADLOCK" => true));
 );
 
 fn main() {
     let view = View::init();
     let rpc = RpcContext::new(&view);
+
+    #[cfg(feature = "dbg")]
+    {
+        use std::thread;
+        use std::time::Duration;
+        use parking_lot::deadlock;
+
+        // Create a background thread which checks for deadlocks every 10s
+        thread::spawn(move || loop {
+            thread::sleep(Duration::from_secs(10));
+            let deadlocks = deadlock::check_deadlock();
+            if deadlocks.is_empty() {
+                continue;
+            }
+
+            let mut s = String::new();
+            s.push_str(&*format!("{} deadlocks:", deadlocks.len()));
+            for (i, threads) in deadlocks.iter().enumerate() {
+                s.push_str(&*format!("\n\t{}:\n\n", i));
+                for t in threads {
+                    s.push_str(&*format!("\tThread: {:#?}", t.thread_id()));
+                    s.push_str(&*format!("\n\t{:#?}", t.backtrace()));
+                }
+            }
+            crit!(*S_DEADLOCK, "{}", s);
+        });
+    }
 
     crossbeam::scope(|scope| {
         // View worker
