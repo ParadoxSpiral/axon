@@ -991,9 +991,9 @@ impl HandleRpc for MainPanel {
                 true
             }
             SMessage::UpdateResources { resources, .. } => {
-                let mut name_cache = match *resources.first().unwrap() {
-                    SResourceUpdate::Resource(Cow::Owned(Resource::Torrent(_)))
-                    | SResourceUpdate::Resource(Cow::Borrowed(&Resource::Torrent(_))) => {
+                let mut name_cache = match resources.first() {
+                    Some(&SResourceUpdate::Resource(Cow::Owned(Resource::Torrent(_))))
+                    | Some(&SResourceUpdate::Resource(Cow::Borrowed(&Resource::Torrent(_)))) => {
                         Some(HashMap::with_capacity(resources.len()))
                     }
                     _ => None,
