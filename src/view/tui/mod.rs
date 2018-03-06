@@ -23,6 +23,7 @@ use termion::{color, cursor};
 use termion::event::Key;
 use url::Url;
 
+use std::borrow::Cow;
 use std::cmp;
 use std::collections::HashMap;
 use std::cmp::Ordering;
@@ -990,26 +991,21 @@ impl HandleRpc for MainPanel {
                 true
             }
             SMessage::UpdateResources { resources, .. } => {
-                let mut name_cache = if resources
-                    .first()
-                    .map(|r| {
-                        if let &SResourceUpdate::Resource(ref r) = r {
-                            r.kind() == ResourceKind::Torrent
-                        } else {
-                            false
-                        }
-                    })
-                    .unwrap_or(false)
-                {
-                    Some(HashMap::with_capacity(resources.len()))
-                } else {
-                    None
+                let mut name_cache = match *resources.first().unwrap() {
+                    SResourceUpdate::Resource(Cow::Owned(Resource::Torrent(_)))
+                    | SResourceUpdate::Resource(Cow::Borrowed(&Resource::Torrent(_))) => {
+                        Some(HashMap::with_capacity(resources.len()))
+                    }
+                    _ => None,
                 };
                 'UPDATES: for upd in resources {
                     match upd {
-                        SResourceUpdate::Resource(res) => {
-                            let res = res.into_owned();
-                            if let Resource::Torrent(t) = res {
+                        // New resource insertion
+                        SResourceUpdate::Resource(res) => match res.into_owned() {
+                            Resource::Server(s) => {
+                                self.server = s;
+                            }
+                            Resource::Torrent(t) => {
                                 let mut cmp_t = t.clone();
                                 cmp_t.name = cmp_t.name.as_ref().map(|n| n.to_lowercase());
                                 ::utils::insert_sorted(&mut self.torrents.1, t, cmp_t, |t, ex| {
@@ -1021,7 +1017,8 @@ impl HandleRpc for MainPanel {
                                             .or_insert_with(|| n.to_lowercase())
                                     }))
                                 });
-                            } else if let Resource::Tracker(t) = res {
+                            }
+                            Resource::Tracker(t) => {
                                 let mut new_pos = self.trackers.len();
                                 for (i, &mut (ref mut base, ref mut others)) in
                                     self.trackers.iter_mut().enumerate()
@@ -1044,21 +1041,66 @@ impl HandleRpc for MainPanel {
                                     }
                                 }
                                 self.trackers.insert(new_pos, (t, Vec::new()));
-                            } else if let Resource::Server(s) = res {
-                                self.server = s;
+                            }
+                            // Ignore other resources for now
+                            _ => (),
+                        },
+                        // Server updates
+                        SResourceUpdate::Throttle {
+                            kind: ResourceKind::Server,
+                            throttle_up,
+                            throttle_down,
+                            ..
+                        } => {
+                            self.server.throttle_up = throttle_up;
+                            self.server.throttle_down = throttle_down;
+                        }
+                        SResourceUpdate::Rate {
+                            kind: ResourceKind::Server,
+                            rate_up,
+                            rate_down,
+                            ..
+                        } => {
+                            self.server.rate_up = rate_up;
+                            self.server.rate_down = rate_down;
+                        }
+                        SResourceUpdate::ServerTransfer { .. } => {
+                            panic!("{:?}", upd);
+                        }
+                        SResourceUpdate::ServerSpace { free_space, .. } => {
+                            self.server.free_space = free_space;
+                        }
+                        SResourceUpdate::ServerToken { download_token, .. } => {
+                            self.server.download_token = download_token;
+                        }
+                        // Tracker updates
+                        SResourceUpdate::TrackerStatus {
+                            id,
+                            last_report,
+                            error,
+                            ..
+                        } => {
+                            // TODO: Hold a Vec of all of the trackers error, to support showing
+                            // all of them, can a tracker have multiple errors?
+                            for &mut (ref mut base, ref others) in &mut self.trackers {
+                                if id == base.id
+                                    || others.iter().any(|&(ref tra_id, _)| id == *tra_id)
+                                {
+                                    base.last_report = last_report;
+                                    base.error = error;
+                                    break;
+                                }
                             }
                         }
+                        // These we ignore
+                        SResourceUpdate::UserData { .. } => (),
+                        // Torrent updates
                         _ => {
-                            // TODO: Only match ids against sensible targets of each upd variant
-                            if upd.id() == &*self.server.id {
-                                self.server.update(upd);
-                                continue 'UPDATES;
-                            }
                             let mut details = self.details.lock();
                             for t in details.1.iter_mut().map(|t| t.inner_mut()) {
                                 if upd.id() == &*t.id {
                                     t.update(upd.clone());
-                                    // break here, because the id might also be in torrents
+                                    // The id will also be in the torrent list
                                     break;
                                 }
                             }
@@ -1066,15 +1108,7 @@ impl HandleRpc for MainPanel {
                             for t in &mut self.torrents.1 {
                                 if upd.id() == &*t.id {
                                     t.update(upd);
-                                    continue 'UPDATES;
-                                }
-                            }
-                            for &mut (ref mut base, ref others) in &mut self.trackers {
-                                if upd.id() == &base.id
-                                    || others.iter().any(|&(ref tra_id, _)| upd.id() == &*tra_id)
-                                {
-                                    base.update(upd);
-                                    continue 'UPDATES;
+                                    break;
                                 }
                             }
                         }
