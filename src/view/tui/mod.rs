@@ -1064,8 +1064,21 @@ impl HandleRpc for MainPanel {
                             self.server.rate_up = rate_up;
                             self.server.rate_down = rate_down;
                         }
-                        SResourceUpdate::ServerTransfer { .. } => {
-                            panic!("{:?}", upd);
+                        SResourceUpdate::ServerTransfer {
+                            rate_up,
+                            rate_down,
+                            transferred_up,
+                            transferred_down,
+                            ses_transferred_up,
+                            ses_transferred_down,
+                            ..
+                        } => {
+                            self.server.rate_up = rate_up;
+                            self.server.rate_down = rate_down;
+                            self.server.transferred_up = transferred_up;
+                            self.server.transferred_down = transferred_down;
+                            self.server.ses_transferred_up = ses_transferred_up;
+                            self.server.ses_transferred_down = ses_transferred_down;
                         }
                         SResourceUpdate::ServerSpace { free_space, .. } => {
                             self.server.free_space = free_space;
