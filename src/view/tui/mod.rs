@@ -23,6 +23,7 @@ use termion::{color, cursor};
 use termion::event::Key;
 use url::Url;
 
+use std::cmp;
 use std::collections::HashMap;
 use std::cmp::Ordering;
 use std::io::Write;
@@ -39,12 +40,12 @@ pub trait Renderable {
 }
 
 pub trait HandleInput {
-    fn input(&mut self, rpc: &RpcContext, k: Key, width: u16, height: u16) -> InputResult;
+    fn input(&mut self, ctx: &RpcContext, k: Key, width: u16, height: u16) -> InputResult;
 }
 
 pub trait HandleRpc {
-    fn rpc(&mut self, rpc: &RpcContext, msg: SMessage) -> bool;
-    fn init(&mut self, rpc: &RpcContext);
+    fn rpc(&mut self, ctx: &RpcContext, msg: SMessage) -> bool;
+    fn init(&mut self, ctx: &RpcContext);
 }
 
 pub enum InputResult {
@@ -60,6 +61,7 @@ pub struct LoginPanel {
     server: widgets::Input,
     pass: widgets::PasswordInput,
     srv_selected: bool,
+    error: Option<(String, &'static str)>,
 }
 
 impl LoginPanel {
@@ -68,52 +70,67 @@ impl LoginPanel {
             server: widgets::Input::from("ws://:8412", 6),
             pass: widgets::PasswordInput::with_capacity(20),
             srv_selected: true,
+            error: None,
         }
     }
 }
 
 impl Renderable for LoginPanel {
     fn render(&mut self, target: &mut Vec<u8>, width: u16, height: u16, _: u16, _: u16) {
-        let (srv, pass) = if self.srv_selected {
-            (
-                format!(
-                    "{}Server{}: {}",
-                    color::Fg(color::Cyan),
-                    color::Fg(color::Reset),
-                    self.server.format_active()
-                ),
-                format!("Pass: {}", self.pass.format_inactive()),
-            )
-        } else {
-            (
-                format!("Server: {}", self.server.format_inactive()),
-                format!(
-                    "{}Pass{}: {}",
-                    color::Fg(color::Cyan),
-                    color::Fg(color::Reset),
-                    self.pass.format_active()
-                ),
-            )
-        };
-        let lines = &[
-            "Welcome to axon, the synapse TUI",
-            "Login to a synapse instance:",
-            &srv,
-            &pass,
-        ];
+        let draw = |target: &mut Vec<u8>, width, height, _, _| {
+            let (srv, pass) = if self.srv_selected {
+                (
+                    format!(
+                        "{}Server{}: {}",
+                        color::Fg(color::Cyan),
+                        color::Fg(color::Reset),
+                        self.server.format_active()
+                    ),
+                    format!("Pass: {}", self.pass.format_inactive()),
+                )
+            } else {
+                (
+                    format!("Server: {}", self.server.format_inactive()),
+                    format!(
+                        "{}Pass{}: {}",
+                        color::Fg(color::Cyan),
+                        color::Fg(color::Reset),
+                        self.pass.format_active()
+                    ),
+                )
+            };
+            let lines = &[
+                "Welcome to axon, the synapse TUI",
+                "Login to a synapse instance:",
+                &srv,
+                &pass,
+            ];
 
-        write!(
-            target,
-            "{}",
-            cursor::Goto(
-                match align::x::CenterLongestLeft::align_offset(lines, width) {
-                    align::x::Alignment::Single(x) => x,
-                    _ => unreachable!(),
-                },
-                height / 3
-            )
-        ).unwrap();
-        align::x::Left::align(target, lines);
+            write!(
+                target,
+                "{}",
+                cursor::Goto(
+                    match align::x::CenterLongestLeft::align_offset(lines, width) {
+                        align::x::Alignment::Single(x) => x,
+                        _ => unreachable!(),
+                    },
+                    height / 3
+                )
+            ).unwrap();
+            align::x::Left::align(target, lines);
+        };
+
+        if let Some((ref e, ref name)) = self.error {
+            widgets::BorrowedOverlay::new(
+                &mut widgets::Text::<_, align::x::Center, align::y::Top>::new(true, &**e),
+                &mut widgets::RenderFn::new(draw),
+                (cmp::max(name.len(), e.len()) as u16 + 2, 1),
+                Some(&color::Red),
+                Some(*name),
+            ).render(target, width, height, 1, 1);
+        } else {
+            draw(target, width, height, 1, 1);
+        }
     }
 
     fn name(&self) -> String {
@@ -123,6 +140,10 @@ impl Renderable for LoginPanel {
 
 impl HandleInput for LoginPanel {
     fn input(&mut self, ctx: &RpcContext, k: Key, _: u16, _: u16) -> InputResult {
+        if self.error.is_some() {
+            self.error = None;
+            return InputResult::Rerender;
+        }
         match k {
             Key::Down | Key::Up | Key::Char('\t') => {
                 self.srv_selected = !self.srv_selected;
@@ -176,26 +197,19 @@ impl HandleInput for LoginPanel {
                 }
                 InputResult::Rerender
             }
-            Key::Char('\n') => if let Err((err, err_name)) = Url::parse(self.server.inner())
+            Key::Char('\n') => Url::parse(self.server.inner())
                 .map_err(|err| (format!("{}", err), "Url"))
                 .and_then(|server| {
                     let pass = self.pass.inner();
                     ctx.init(server, pass)
                         .map_err(|err| (format!("{}", err), "RPC"))
-                }) {
-                let len = err.len();
-                InputResult::ReplaceWith(Box::new(widgets::OwnedOverlay::new(
-                    widgets::CloseOnInput::new(widgets::IgnoreRpc::new(
-                        widgets::Text::<_, align::x::Center, align::y::Top>::new(true, err),
-                    )),
-                    Box::new(widgets::IgnoreRpcPassInput::new(self.clone())),
-                    (len as u16 + 2, 1),
-                    color::Red,
-                    err_name.to_owned(),
-                )) as Box<Component>)
-            } else {
-                InputResult::ReplaceWith(Box::new(MainPanel::new(ctx)) as Box<Component>)
-            },
+                })
+                .map_err(|(e, name)| {
+                    self.error = Some((e, name));
+                    InputResult::Rerender
+                })
+                .map(|()| InputResult::ReplaceWith(Box::new(MainPanel::new(ctx)) as Box<Component>))
+                .unwrap_or_else(|e| e),
             Key::Char(c) => {
                 if self.srv_selected {
                     self.server.push(c);
@@ -223,7 +237,7 @@ enum Focus {
     Torrents,
 }
 
-struct MainPanel {
+pub struct MainPanel {
     focus: Focus,
     filter: (bool, Filter),
     torrents: (usize, Vec<Torrent>),

@@ -324,7 +324,7 @@ where
 impl<'a, T, B, C> BorrowedOverlay<'a, T, B, C>
 where
     T: Renderable + ?Sized,
-    B: Component + ?Sized,
+    B: Renderable + ?Sized,
     C: Color,
 {
     pub fn new<J: Into<Option<&'a str>>>(
@@ -350,7 +350,7 @@ where
 impl<'a, T, B, C> Renderable for BorrowedOverlay<'a, T, B, C>
 where
     T: Renderable + ?Sized,
-    B: Component + ?Sized,
+    B: Renderable + ?Sized,
     C: Color,
 {
     fn name(&self) -> String {
@@ -859,7 +859,7 @@ impl ::std::ops::DerefMut for PasswordInput {
     }
 }
 impl PasswordInput {
-    pub fn format_active(&mut self) -> String {
+    pub fn format_active(&self) -> String {
         let len = self.content.graphemes(true).count();
         let stars = (0..len).fold("".to_owned(), |s, _| s + "*");
         if self.pos > len {
@@ -1005,112 +1005,4 @@ where
         false
     }
     fn init(&mut self, _: &RpcContext) {}
-}
-
-pub struct IgnoreRpcPassInput<T>
-where
-    T: Renderable + HandleInput,
-{
-    content: T,
-}
-
-impl<T> IgnoreRpcPassInput<T>
-where
-    T: Renderable + HandleInput,
-{
-    pub fn new(ct: T) -> IgnoreRpcPassInput<T> {
-        IgnoreRpcPassInput { content: ct }
-    }
-}
-
-impl<T> Component for IgnoreRpcPassInput<T>
-where
-    T: Renderable + HandleInput,
-{
-}
-
-impl<T> Renderable for IgnoreRpcPassInput<T>
-where
-    T: Renderable + HandleInput,
-{
-    fn name(&self) -> String {
-        self.content.name()
-    }
-    fn render(&mut self, target: &mut Vec<u8>, width: u16, height: u16, x_off: u16, y_off: u16) {
-        self.content.render(target, width, height, x_off, y_off);
-    }
-}
-
-impl<T> HandleInput for IgnoreRpcPassInput<T>
-where
-    T: Renderable + HandleInput,
-{
-    fn input(&mut self, ctx: &RpcContext, k: Key, w: u16, h: u16) -> InputResult {
-        self.content.input(ctx, k, w, h)
-    }
-}
-
-impl<T> HandleRpc for IgnoreRpcPassInput<T>
-where
-    T: Renderable + HandleInput,
-{
-    fn rpc(&mut self, _: &RpcContext, _: SMessage) -> bool {
-        false
-    }
-    fn init(&mut self, _: &RpcContext) {}
-}
-
-pub struct IgnoreInputPassRpc<T>
-where
-    T: Renderable + HandleRpc,
-{
-    content: T,
-}
-
-impl<T> IgnoreInputPassRpc<T>
-where
-    T: Renderable + HandleRpc,
-{
-    pub fn new(ct: T) -> IgnoreInputPassRpc<T> {
-        IgnoreInputPassRpc { content: ct }
-    }
-}
-
-impl<T> Component for IgnoreInputPassRpc<T>
-where
-    T: Renderable + HandleRpc,
-{
-}
-
-impl<T> Renderable for IgnoreInputPassRpc<T>
-where
-    T: Renderable + HandleRpc,
-{
-    fn name(&self) -> String {
-        self.content.name()
-    }
-    fn render(&mut self, target: &mut Vec<u8>, width: u16, height: u16, x_off: u16, y_off: u16) {
-        self.content.render(target, width, height, x_off, y_off);
-    }
-}
-
-impl<T> HandleInput for IgnoreInputPassRpc<T>
-where
-    T: Renderable + HandleRpc,
-{
-    fn input(&mut self, _: &RpcContext, k: Key, _: u16, _: u16) -> InputResult {
-        InputResult::Key(k)
-    }
-}
-
-impl<T> HandleRpc for IgnoreInputPassRpc<T>
-where
-    T: Renderable + HandleRpc,
-{
-    fn rpc(&mut self, ctx: &RpcContext, msg: SMessage) -> bool {
-        self.content.rpc(ctx, msg)
-    }
-    fn init(&mut self, ctx: &RpcContext) {
-        self.content.init(ctx);
-    }
 }
