@@ -16,7 +16,6 @@
 pub mod widgets;
 
 use humansize::{file_size_opts as sopt, FileSize};
-use parking_lot::Mutex;
 use synapse_rpc::message::{CMessage, SMessage};
 use synapse_rpc::resource::{Resource, ResourceKind, SResourceUpdate, Server, Torrent, Tracker};
 use termion::{color, cursor};
@@ -238,6 +237,7 @@ enum Focus {
     Torrents,
 }
 
+#[derive(Clone)]
 pub struct MainPanel {
     focus: Focus,
     filter: (bool, Filter),
@@ -245,7 +245,7 @@ pub struct MainPanel {
     // tracker base, (tracker id, torrent id)
     trackers: Vec<(Tracker, Vec<(String, String)>)>,
     trackers_displ: bool,
-    details: Mutex<(usize, Vec<TorrentDetailsPanel>)>,
+    details: (usize, Vec<TorrentDetailsPanel>),
     server: Server,
     server_version: String,
 }
@@ -258,27 +258,12 @@ impl MainPanel {
             torrents: (0, Vec::new()),
             trackers: Vec::new(),
             trackers_displ: false,
-            details: Mutex::new((0, Vec::new())),
+            details: (0, Vec::new()),
             server: Default::default(),
             server_version: "?.?".to_owned(),
         };
         p.init(ctx);
         p
-    }
-}
-
-impl Clone for MainPanel {
-    fn clone(&self) -> MainPanel {
-        MainPanel {
-            focus: self.focus,
-            filter: self.filter.clone(),
-            torrents: self.torrents.clone(),
-            trackers: self.trackers.clone(),
-            trackers_displ: self.trackers_displ,
-            details: Mutex::new((*self.details.lock()).clone()),
-            server: self.server.clone(),
-            server_version: self.server_version.clone(),
-        }
     }
 }
 
@@ -307,17 +292,16 @@ impl HandleInput for MainPanel {
                     InputResult::Rerender
                 }
                 Focus::Torrents if !self.torrents.1.is_empty() => {
-                    let mut d = self.details.lock();
-                    if let Some(pos) = d.1
+                    if let Some(pos) = self.details.1
                         .iter()
                         .position(|dt| dt.inner().id == self.torrents.1[self.torrents.0].id)
                     {
-                        d.0 = pos;
+                        self.details.0 = pos;
                     } else {
-                        d.1.push(TorrentDetailsPanel::new(
+                        self.details.1.push(TorrentDetailsPanel::new(
                             self.torrents.1[self.torrents.0].clone(),
                         ));
-                        d.0 = d.1.len() - 1;
+                        self.details.0 = self.details.1.len() - 1;
                     }
                     self.focus = Focus::Details;
                     InputResult::Rerender
@@ -330,15 +314,14 @@ impl HandleInput for MainPanel {
                     InputResult::Rerender
                 }
                 Focus::Details => {
-                    let mut d = self.details.lock();
                     // This is ok, because details only focused when not empty
                     // FIXME: NLL
-                    let i = d.0;
-                    d.1.remove(i);
-                    if d.0 > 0 {
-                        d.0 -= 1;
+                    let i = self.details.0;
+                    self.details.1.remove(i);
+                    if self.details.0 > 0 {
+                        self.details.0 -= 1;
                     }
-                    if d.1.is_empty() {
+                    if self.details.1.is_empty() {
                         self.focus = Focus::Torrents;
                     }
                     InputResult::Rerender
@@ -380,8 +363,7 @@ impl HandleInput for MainPanel {
                         if self.focus == Focus::Torrents {
                             self.torrents.1.get(self.torrents.0).cloned()
                         } else {
-                            let d = self.details.lock();
-                            d.1.get(d.0).map(|d| d.inner().clone())
+                            self.details.1.get(self.details.0).map(|d| d.inner().clone())
                         }.and_then(|s| {
                             self.trackers
                                 .iter()
@@ -428,8 +410,7 @@ impl HandleInput for MainPanel {
                         if self.focus == Focus::Torrents {
                             self.torrents.1.get(self.torrents.0).cloned()
                         } else {
-                            let d = self.details.lock();
-                            d.1.get(d.0).map(|d| d.inner().clone())
+                            self.details.1.get(self.details.0).map(|d| d.inner().clone())
                         }.and_then(|t| t.error)
                             .and_then(|e| {
                                 Some(InputResult::ReplaceWith(
@@ -470,9 +451,8 @@ impl HandleInput for MainPanel {
                     InputResult::Rerender
                 }
                 Focus::Details => {
-                    let mut d = self.details.lock();
-                    if d.0 > 0 {
-                        d.0 -= 1;
+                    if self.details.0 > 0 {
+                        self.details.0 -= 1;
                         InputResult::Rerender
                     } else {
                         InputResult::Key(Key::Char('H'))
@@ -486,9 +466,8 @@ impl HandleInput for MainPanel {
                     InputResult::Rerender
                 }
                 Focus::Details => {
-                    let mut d = self.details.lock();
-                    if d.0 < d.1.len() - 1 {
-                        d.0 += 1;
+                    if self.details.0 < self.details.1.len() - 1 {
+                        self.details.0 += 1;
                         InputResult::Rerender
                     } else {
                         InputResult::Key(Key::Char('L'))
@@ -501,7 +480,7 @@ impl HandleInput for MainPanel {
                     f_push!(self, ctx, 'J');
                     InputResult::Rerender
                 }
-                Focus::Torrents if !self.details.lock().1.is_empty() => {
+                Focus::Torrents if !self.details.1.is_empty() => {
                     self.focus = Focus::Details;
                     InputResult::Rerender
                 }
@@ -546,9 +525,8 @@ impl HandleInput for MainPanel {
                     InputResult::Rerender
                 }
                 Focus::Details => {
-                    let mut d = self.details.lock();
-                    if d.0 > 0 {
-                        d.0 -= 1;
+                    if self.details.0 > 0 {
+                        self.details.0 -= 1;
                         InputResult::Rerender
                     } else {
                         InputResult::Key(Key::Char('h'))
@@ -562,9 +540,8 @@ impl HandleInput for MainPanel {
                     InputResult::Rerender
                 }
                 Focus::Details => {
-                    let mut d = self.details.lock();
-                    if d.0 + 1 != d.1.len() {
-                        d.0 += 1;
+                    if self.details.0 + 1 != self.details.1.len() {
+                        self.details.0 += 1;
                         InputResult::Rerender
                     } else {
                         InputResult::Key(Key::Char('l'))
@@ -610,9 +587,8 @@ impl HandleInput for MainPanel {
             },
             Key::Left => match self.focus {
                 Focus::Details => {
-                    let mut d = self.details.lock();
-                    if d.0 > 0 {
-                        d.0 -= 1;
+                    if self.details.0 > 0 {
+                        self.details.0 -= 1;
                         InputResult::Rerender
                     } else {
                         InputResult::Key(Key::Left)
@@ -626,9 +602,8 @@ impl HandleInput for MainPanel {
             },
             Key::Right => match self.focus {
                 Focus::Details => {
-                    let mut d = self.details.lock();
-                    if d.0 + 1 != d.1.len() {
-                        d.0 += 1;
+                    if self.details.0 + 1 != self.details.1.len() {
+                        self.details.0 += 1;
                         InputResult::Rerender
                     } else {
                         InputResult::Key(Key::Right)
@@ -662,7 +637,7 @@ impl HandleInput for MainPanel {
                     InputResult::Rerender
                 }
                 Focus::Details => {
-                    self.details.lock().0 = 0;
+                    self.details.0 = 0;
                     InputResult::Rerender
                 }
                 Focus::Filter => {
@@ -676,8 +651,7 @@ impl HandleInput for MainPanel {
                     InputResult::Rerender
                 }
                 Focus::Details => {
-                    let mut d = self.details.lock();
-                    d.0 = d.1.len() - 1;
+                    self.details.0 = self.details.1.len() - 1;
                     InputResult::Rerender
                 }
                 Focus::Filter => {
@@ -741,10 +715,9 @@ impl Renderable for MainPanel {
             }
         };
         let draw_trackers = |target: &mut _, width, height, x, y| {
-            let d = self.details.lock();
             let sel_tor = match self.focus {
                 Focus::Torrents | Focus::Filter => self.torrents.1.get(self.torrents.0),
-                Focus::Details => d.1.get(d.0).map(|t| t.inner()),
+                Focus::Details => self.details.1.get(self.details.0).map(|t| t.inner()),
             };
             for (i, &(ref base_trac, ref others)) in
                 self.trackers.iter().take(height as _).enumerate()
@@ -788,10 +761,9 @@ impl Renderable for MainPanel {
             }
         };
         let draw_details = |target: &mut _, width, height, x, y| {
-            let mut details = self.details.lock();
-            // FIXME: NLL
-            let l = details.0;
-            widgets::BorrowedSameTabs::new(&mut *details.1, l).render(target, width, height, x, y);
+            // FIXME: The unsafe avoids clones; This is perfectly safe but not possible without
+            // "Closures Capture Disjoint Fields" safely
+            widgets::BorrowedSameTabs::new(unsafe{::std::slice::from_raw_parts_mut(self.details.1.as_ptr() as *mut TorrentDetailsPanel, self.details.1.len()) }, self.details.0).render(target, width, height, x, y);
         };
         let draw_footer = |target: &mut _, width, height, x, y| {
             widgets::Text::<_, align::x::Left, align::y::Top>::new(
@@ -848,8 +820,7 @@ impl Renderable for MainPanel {
             ).render(target, width, height, x, y);
         };
 
-        let empty = self.details.lock().1.is_empty();
-        match (self.trackers_displ, empty) {
+        match (self.trackers_displ, self.details.1.is_empty()) {
             (false, true) => {
                 widgets::HSplit::new(
                     &mut widgets::RenderFn::new(draw_torrents) as &mut Renderable,
@@ -943,9 +914,8 @@ impl HandleRpc for MainPanel {
 
                 i = 0;
                 dec = 0;
-                let mut details = self.details.lock();
-                let idx = details.0;
-                details.1.retain(|t| {
+                let idx = self.details.0;
+                self.details.1.retain(|t| {
                     i += 1;
                     if ids.contains(&t.inner().id) {
                         if i - 1 == idx && i != 1 {
@@ -959,10 +929,9 @@ impl HandleRpc for MainPanel {
                 if dec > 0 {
                     self.torrents.0.saturating_sub(dec);
                 }
-                if details.1.is_empty() && self.focus == Focus::Details {
+                if self.details.1.is_empty() && self.focus == Focus::Details {
                     self.focus = Focus::Torrents;
                 }
-                drop(details);
 
                 // FIXME: Once retain is fixed, use two nested .retains
                 let mut idx = 0;
@@ -1121,15 +1090,13 @@ impl HandleRpc for MainPanel {
                         SResourceUpdate::UserData { .. } => (),
                         // Torrent updates
                         _ => {
-                            let mut details = self.details.lock();
-                            for t in details.1.iter_mut().map(|t| t.inner_mut()) {
+                            for t in self.details.1.iter_mut().map(|t| t.inner_mut()) {
                                 if upd.id() == &*t.id {
                                     t.update(upd.clone());
                                     // The id will also be in the torrent list
                                     break;
                                 }
                             }
-                            drop(details);
                             for t in &mut self.torrents.1 {
                                 if upd.id() == &*t.id {
                                     t.update(upd);
