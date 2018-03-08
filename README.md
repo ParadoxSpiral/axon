@@ -3,6 +3,7 @@ The synapse TUI client
 
 
 # Usage
+Required minimum Rust version: 1.24.
 Note: Currently termion does not respect terminfo and uses ANSI color codes ([#106](https://github.com/ticki/termion/issues/106)).
 
 ## Keybindings

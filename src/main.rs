@@ -19,8 +19,6 @@ extern crate chrono;
 extern crate crossbeam;
 extern crate futures;
 extern crate humansize;
-#[macro_use]
-extern crate lazy_static;
 extern crate parking_lot;
 extern crate serde;
 extern crate serde_json;
@@ -32,6 +30,9 @@ extern crate unicode_width;
 extern crate url;
 extern crate websocket;
 
+#[cfg(feature = "dbg")]
+#[cfg_attr(feature = "dbg", macro_use)]
+extern crate lazy_static;
 #[cfg(feature = "dbg")]
 #[cfg_attr(feature = "dbg", macro_use)]
 extern crate slog;
@@ -53,9 +54,8 @@ use rpc::RpcContext;
 use view::View;
 use view::tui::InputResult;
 
-lazy_static!(
-    static ref RUNNING: AtomicBool = AtomicBool::new(true);
-);
+static RUNNING: AtomicBool = AtomicBool::new(true);
+
 #[cfg(feature = "dbg")]
 lazy_static! {
     static ref SLOG_ROOT: slog::Logger = {
