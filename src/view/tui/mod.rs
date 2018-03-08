@@ -161,6 +161,18 @@ impl HandleInput for LoginPanel {
                 self.srv_selected = !self.srv_selected;
             }
 
+            Key::Left => if self.srv_selected {
+                self.server.cursor_left();
+            } else {
+                self.pass.cursor_left();
+            },
+
+            Key::Right => if self.srv_selected {
+                self.server.cursor_right();
+            } else {
+                self.pass.cursor_right();
+            },
+
             Key::Backspace => if self.srv_selected {
                 self.server.backspace();
             } else {
