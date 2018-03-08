@@ -38,10 +38,6 @@ use std::time::Duration;
 
 use view::View;
 
-lazy_static!(
-    pub static ref SERVER_VERSION: Mutex<String> = Mutex::new("?.?".to_owned());
-);
-
 type InnerStream = Framed<Box<Stream + Send>, MessageCodec<OwnedMessage>>;
 type SplitSocket = (
     RefCell<SplitStream<InnerStream>>,
@@ -238,8 +234,7 @@ impl<'v> RpcContext<'v> {
                                         } else {
                                             #[cfg(feature = "dbg")]
                                             debug!(*::S_RPC, "RPC version match");
-                                            (*SERVER_VERSION.lock()) =
-                                                format!("{}.{}", ver.major, ver.minor);
+                                            self.view.handle_rpc(self, SMessage::RpcVersion(ver));
                                             future::ok(())
                                         }
                                     }
@@ -266,7 +261,6 @@ impl<'v> RpcContext<'v> {
                 #[cfg(feature = "dbg")]
                 info!(*::S_RPC, "Rejiggering for new server");
                 *self.socket.borrow_mut() = None;
-                *SERVER_VERSION.lock() = "?.?".to_owned();
                 continue;
             } else {
                 #[cfg(feature = "dbg")]

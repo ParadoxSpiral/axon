@@ -225,10 +225,10 @@ impl HandleInput for LoginPanel {
 }
 
 macro_rules! f_push {
-    ($s:ident, $c:ident, $v:expr) => {
+    ($s: ident, $c: ident, $v: expr) => {
         $s.filter.1.push($v);
         $s.filter.1.update($c);
-    }
+    };
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -260,7 +260,7 @@ impl MainPanel {
             trackers_displ: false,
             details: Mutex::new((0, Vec::new())),
             server: Default::default(),
-            server_version: ::rpc::SERVER_VERSION.lock().clone(),
+            server_version: "?.?".to_owned(),
         };
         p.init(ctx);
         p
@@ -395,16 +395,24 @@ impl HandleInput for MainPanel {
                         })
                             .and_then(|e| {
                                 let l = e.len();
-                                Some(InputResult::ReplaceWith(Box::new(widgets::OwnedOverlay::new(
-                            widgets::CloseOnInput::new(widgets::IgnoreRpc::new(
-                                widgets::Text::<_, align::x::Center, align::y::Top>::new(true, e),
-                            )),
-                            // FIXME: There has to be a better way than cloning self
-                            Box::new(self.clone()),
-                            (l as u16 + 2, 1),
-                            color::Red,
-                            "Tracker".to_owned(),
-                        )) as Box<Component>))
+                                Some(InputResult::ReplaceWith(
+                                    Box::new(widgets::OwnedOverlay::new(
+                                        widgets::CloseOnInput::new(
+                                            widgets::IgnoreRpc::new(widgets::Text::<
+                                                _,
+                                                align::x::Center,
+                                                align::y::Top,
+                                            >::new(
+                                                true, e
+                                            )),
+                                        ),
+                                        // FIXME: There has to be a better way than cloning self
+                                        Box::new(self.clone()),
+                                        (l as u16 + 2, 1),
+                                        color::Red,
+                                        "Tracker".to_owned(),
+                                    )) as Box<Component>,
+                                ))
                             })
                             .unwrap_or(InputResult::Key(Key::Char('E')))
                     }
@@ -425,20 +433,23 @@ impl HandleInput for MainPanel {
                         }.and_then(|t| t.error)
                             .and_then(|e| {
                                 Some(InputResult::ReplaceWith(
-                                Box::new(widgets::OwnedOverlay::new(
-                                    widgets::CloseOnInput::new(widgets::IgnoreRpc::new(
-                                        widgets::Text::<_, align::x::Center, align::y::Top>::new(
-                                            true,
-                                            e.clone(),
+                                    Box::new(widgets::OwnedOverlay::new(
+                                        widgets::CloseOnInput::new(
+                                            widgets::IgnoreRpc::new(widgets::Text::<
+                                                _,
+                                                align::x::Center,
+                                                align::y::Top,
+                                            >::new(
+                                                true, e.clone()
+                                            )),
                                         ),
-                                    )),
-                                    // FIXME: There has to be a better way than cloning self
-                                    Box::new(self.clone()),
-                                    (e.len() as u16 + 2, 1),
-                                    color::Red,
-                                    "Torrent".to_owned(),
-                                )) as Box<Component>,
-                            ))
+                                        // FIXME: There has to be a better way than cloning self
+                                        Box::new(self.clone()),
+                                        (e.len() as u16 + 2, 1),
+                                        color::Red,
+                                        "Torrent".to_owned(),
+                                    )) as Box<Component>,
+                                ))
                             })
                             .unwrap_or(InputResult::Key(Key::Char('e')))
                     }
@@ -691,9 +702,6 @@ impl Renderable for MainPanel {
         "torrents".into()
     }
     fn render(&mut self, target: &mut Vec<u8>, width: u16, height: u16, x_off: u16, y_off: u16) {
-        if &self.server_version == "?.?" {
-            self.server_version = ::rpc::SERVER_VERSION.lock().clone();
-        }
         let draw_torrents = |target: &mut _, width, height, x, y| {
             let ceil = if self.filter.0 { height - 1 } else { height };
             for (i, t) in self.torrents.1.iter().take(ceil as _).enumerate() {
@@ -909,6 +917,10 @@ impl Renderable for MainPanel {
 impl HandleRpc for MainPanel {
     fn rpc(&mut self, _: &RpcContext, msg: SMessage) -> bool {
         match msg {
+            SMessage::RpcVersion(ver) => {
+                self.server_version = format!("{}.{}", ver.major, ver.minor);
+                true
+            }
             SMessage::ResourcesRemoved { ids, .. } => {
                 // FIXME: Some shittiness can go once closure disjoint field borrows land
                 let mut i = 0;
@@ -1197,7 +1209,7 @@ impl Renderable for TorrentDetailsPanel {
                         } else {
                             t.file_size(sopt::DECIMAL).unwrap()
                         })
-                        .unwrap_or("inherit".into()),
+                        .unwrap_or("global".into()),
                     self.torr.rate_down.file_size(sopt::DECIMAL).unwrap(),
                     self.torr
                         .throttle_down
@@ -1206,7 +1218,7 @@ impl Renderable for TorrentDetailsPanel {
                         } else {
                             t.file_size(sopt::DECIMAL).unwrap()
                         })
-                        .unwrap_or("inherit".into()),
+                        .unwrap_or("global".into()),
                     self.torr.transferred_up.file_size(sopt::DECIMAL).unwrap(),
                     self.torr.transferred_down.file_size(sopt::DECIMAL).unwrap(),
                 ),

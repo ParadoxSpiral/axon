@@ -57,17 +57,17 @@ lazy_static!(
     static ref RUNNING: AtomicBool = AtomicBool::new(true);
 );
 #[cfg(feature = "dbg")]
-lazy_static!(
+lazy_static! {
     static ref SLOG_ROOT: slog::Logger = {
         use slog::Drain;
         use std::fs::OpenOptions;
 
-       let file = OpenOptions::new()
-          .create(true)
-          .write(true)
-          .truncate(true)
-          .open("debug_log")
-          .unwrap();
+        let file = OpenOptions::new()
+            .create(true)
+            .write(true)
+            .truncate(true)
+            .open("debug_log")
+            .unwrap();
 
         let decorator = slog_term::PlainDecorator::new(file);
         let drain = slog_term::CompactFormat::new(decorator).build().fuse();
@@ -80,7 +80,7 @@ lazy_static!(
     static ref S_VIEW: slog::Logger = (*SLOG_ROOT).new(o!("View" => true));
     static ref S_IO: slog::Logger = (*SLOG_ROOT).new(o!("IO" => true));
     static ref S_DEADLOCK: slog::Logger = (*SLOG_ROOT).new(o!("DEADLOCK" => true));
-);
+}
 
 fn main() {
     let view = View::init();
