@@ -94,19 +94,18 @@ impl View {
     }
 
     pub fn handle_input(&self, ctx: &RpcContext, k: Key) -> InputResult {
-        let size = termion::terminal_size().unwrap_or((0, 0));
-        let mut cnt = self.content.lock();
         match k {
-            Key::Ctrl('q') => if cnt.logged_in() {
-                drop(cnt);
+            Key::Ctrl('q') => if self.logged_in() {
                 ctx.wake();
                 self.connection_close(None);
                 InputResult::Rerender
             } else {
                 InputResult::Close
             },
-            Key::F(5) => InputResult::Rerender,
-            _ => cnt.input(ctx, k, size.0, size.1),
+            _ => {
+                let s = termion::terminal_size().unwrap_or((0, 0));
+                self.content.lock().input(ctx, k, s.0, s.1)
+            }
         }
     }
 
@@ -130,6 +129,14 @@ impl View {
             Some("Connection closed".to_owned()),
             TopLevelComponent::Login(LoginPanel::new()),
         );
+    }
+
+    fn logged_in(&self) -> bool {
+        match *self.content.lock() {
+            DisplayState::Component(TopLevelComponent::Login(_))
+            | DisplayState::GlobalErr(_, _, TopLevelComponent::Login(_)) => false,
+            _ => true,
+        }
     }
 }
 
@@ -196,13 +203,6 @@ impl DisplayState {
                 cmp.rpc(ctx, msg)
             }
             _ => false,
-        }
-    }
-    fn logged_in(&self) -> bool {
-        match *self {
-            DisplayState::Component(TopLevelComponent::Login(_))
-            | DisplayState::GlobalErr(_, _, TopLevelComponent::Login(_)) => false,
-            _ => true,
         }
     }
     fn global_err(&mut self, err: String, name: Option<String>) {

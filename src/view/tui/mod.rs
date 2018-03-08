@@ -145,89 +145,66 @@ impl HandleInput for LoginPanel {
             return InputResult::Rerender;
         }
         match k {
+            Key::Home => if self.srv_selected {
+                self.server.home();
+            } else {
+                self.pass.home();
+            },
+
+            Key::End => if self.srv_selected {
+                self.server.end();
+            } else {
+                self.pass.end();
+            },
+
             Key::Down | Key::Up | Key::Char('\t') => {
                 self.srv_selected = !self.srv_selected;
-                InputResult::Rerender
             }
-            Key::Left => {
-                if self.srv_selected {
-                    self.server.cursor_left();
-                } else {
-                    self.pass.cursor_left();
-                };
-                InputResult::Rerender
-            }
-            Key::Right => {
-                if self.srv_selected {
-                    self.server.cursor_right();
-                } else {
-                    self.pass.cursor_right();
-                };
-                InputResult::Rerender
-            }
-            Key::Backspace => {
-                if self.srv_selected {
-                    self.server.backspace();
-                } else {
-                    self.pass.backspace();
-                }
-                InputResult::Rerender
-            }
-            Key::Delete => {
-                if self.srv_selected {
-                    self.server.delete();
-                } else {
-                    self.pass.delete();
-                }
-                InputResult::Rerender
-            }
-            Key::Home => {
-                if self.srv_selected {
-                    self.server.home();
-                } else {
-                    self.pass.home();
-                }
-                InputResult::Rerender
-            }
-            Key::End => {
-                if self.srv_selected {
-                    self.server.end();
-                } else {
-                    self.pass.end();
-                }
-                InputResult::Rerender
-            }
-            Key::Char('\n') => Url::parse(self.server.inner())
+
+            Key::Backspace => if self.srv_selected {
+                self.server.backspace();
+            } else {
+                self.pass.backspace();
+            },
+
+            Key::Delete => if self.srv_selected {
+                self.server.delete();
+            } else {
+                self.pass.delete();
+            },
+
+            Key::Char('\n') => {
+                return Url::parse(self.server.inner())
                 .map_err(|err| (format!("{}", err), "Url"))
                 .and_then(|server| {
                     let pass = self.pass.inner();
                     ctx.init(server, pass)
-                        .map_err(|err| (format!("{}", err), "RPC"))
+                .map(|()| {
+                    InputResult::ReplaceWith(Box::new(MainPanel::new(ctx)) as Box<Component>)
                 })
+                        .map_err(|err| {
+                            (format!("{}", err), "RPC")
+                        })
+                })
+                // FIXME: with closure disjoint borrows this could go into the above map_err
                 .map_err(|(e, name)| {
                     self.error = Some((e, name));
                     InputResult::Rerender
                 })
-                .map(|()| InputResult::ReplaceWith(Box::new(MainPanel::new(ctx)) as Box<Component>))
-                .unwrap_or_else(|e| e),
-            Key::Char(c) => {
-                if self.srv_selected {
-                    self.server.push(c);
-                } else {
-                    self.pass.push(c);
-                }
-                InputResult::Rerender
+                .unwrap_or_else(|e| e);
             }
-            _ => InputResult::Key(k),
-        }
-    }
-}
 
-macro_rules! f_push {
-    ($s: ident, $c: ident, $v: expr) => {
-        $s.filter.1.push($v);
-        $s.filter.1.update($c);
-    };
+            Key::Char(c) => if self.srv_selected {
+                self.server.push(c);
+            } else {
+                self.pass.push(c);
+            },
+            _ => {
+                return InputResult::Key(k);
+            }
+        }
+        InputResult::Rerender
+    }
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -271,403 +248,220 @@ impl Component for MainPanel {}
 
 impl HandleInput for MainPanel {
     fn input(&mut self, ctx: &RpcContext, k: Key, _: u16, height: u16) -> InputResult {
-        match k {
-            Key::Char('t') => {
-                match (self.focus, self.trackers_displ) {
-                    (Focus::Filter, _) => {
-                        f_push!(self, ctx, 't');
-                    }
-                    (_, false) => {
-                        self.trackers_displ = true;
-                    }
-                    (_, true) => {
-                        self.trackers_displ = false;
-                    }
-                }
-                InputResult::Rerender
+        match (k, self.focus) {
+            // Special keys
+            (Key::Ctrl('f'), Focus::Filter) => {
+                self.focus = Focus::Torrents;
+                self.filter.0 = false;
+                self.filter.1.clear();
+                self.filter.1.update(ctx);
             }
-            Key::Char('d') => match self.focus {
-                Focus::Filter => {
-                    f_push!(self, ctx, 'd');
-                    InputResult::Rerender
-                }
-                Focus::Torrents if !self.torrents.1.is_empty() => {
-                    if let Some(pos) = self.details.1
-                        .iter()
-                        .position(|dt| dt.inner().id == self.torrents.1[self.torrents.0].id)
-                    {
-                        self.details.0 = pos;
-                    } else {
-                        self.details.1.push(TorrentDetailsPanel::new(
-                            self.torrents.1[self.torrents.0].clone(),
-                        ));
-                        self.details.0 = self.details.1.len() - 1;
-                    }
-                    self.focus = Focus::Details;
-                    InputResult::Rerender
-                }
-                _ => InputResult::Key(Key::Char('d')),
-            },
-            Key::Char('q') => match self.focus {
-                Focus::Filter => {
-                    f_push!(self, ctx, 'q');
-                    InputResult::Rerender
-                }
-                Focus::Details => {
-                    // This is ok, because details only focused when not empty
-                    // FIXME: NLL
-                    let i = self.details.0;
-                    self.details.1.remove(i);
-                    if self.details.0 > 0 {
-                        self.details.0 -= 1;
-                    }
-                    if self.details.1.is_empty() {
-                        self.focus = Focus::Torrents;
-                    }
-                    InputResult::Rerender
-                }
-                _ => InputResult::Key(Key::Char('q')),
-            },
-            Key::Ctrl('s') => match self.focus {
-                Focus::Filter => {
-                    self.filter.1.cycle();
-                    self.filter.1.update(ctx);
-                    InputResult::Rerender
-                }
-                _ => InputResult::Key(Key::Ctrl('s')),
-            },
-            Key::Esc => match self.focus {
-                Focus::Filter => {
-                    self.focus = Focus::Torrents;
-                    self.filter.0 = false;
-                    self.filter.1.clear();
-                    self.filter.1.update(ctx);
-                    InputResult::Rerender
-                }
-                _ => InputResult::Key(Key::Esc),
-            },
-            Key::Char('\n') => match self.focus {
-                Focus::Torrents if self.filter.0 => {
-                    self.focus = Focus::Filter;
-                    InputResult::Rerender
-                }
-                Focus::Filter => {
-                    self.focus = Focus::Torrents;
-                    InputResult::Rerender
-                }
-                _ => InputResult::Key(Key::Char('\n')),
-            },
-            Key::Char('E') => {
-                match self.focus {
-                    Focus::Torrents | Focus::Details => {
-                        if self.focus == Focus::Torrents {
-                            self.torrents.1.get(self.torrents.0).cloned()
-                        } else {
-                            self.details.1.get(self.details.0).map(|d| d.inner().clone())
-                        }.and_then(|s| {
-                            self.trackers
-                                .iter()
-                                .find(|&&(ref tra, ref other_tra)| {
-                                    s.id == tra.torrent_id
-                                        || other_tra
-                                            .binary_search_by(|&(_, ref t)| t.cmp(&s.id))
-                                            .is_ok()
-                                })
-                                .and_then(|tra| tra.0.error.clone())
-                        })
-                            .and_then(|e| {
-                                let l = e.len();
-                                Some(InputResult::ReplaceWith(
-                                    Box::new(widgets::OwnedOverlay::new(
-                                        widgets::CloseOnInput::new(
-                                            widgets::IgnoreRpc::new(widgets::Text::<
-                                                _,
-                                                align::x::Center,
-                                                align::y::Top,
-                                            >::new(
-                                                true, e
-                                            )),
-                                        ),
-                                        // FIXME: There has to be a better way than cloning self
-                                        Box::new(self.clone()),
-                                        (l as u16 + 2, 1),
-                                        color::Red,
-                                        "Tracker".to_owned(),
-                                    )) as Box<Component>,
-                                ))
-                            })
-                            .unwrap_or(InputResult::Key(Key::Char('E')))
-                    }
-                    Focus::Filter => {
-                        f_push!(self, ctx, 'E');
-                        InputResult::Rerender
-                    }
-                }
-            }
-            Key::Char('e') => {
-                match self.focus {
-                    Focus::Torrents | Focus::Details => {
-                        if self.focus == Focus::Torrents {
-                            self.torrents.1.get(self.torrents.0).cloned()
-                        } else {
-                            self.details.1.get(self.details.0).map(|d| d.inner().clone())
-                        }.and_then(|t| t.error)
-                            .and_then(|e| {
-                                Some(InputResult::ReplaceWith(
-                                    Box::new(widgets::OwnedOverlay::new(
-                                        widgets::CloseOnInput::new(
-                                            widgets::IgnoreRpc::new(widgets::Text::<
-                                                _,
-                                                align::x::Center,
-                                                align::y::Top,
-                                            >::new(
-                                                true, e.clone()
-                                            )),
-                                        ),
-                                        // FIXME: There has to be a better way than cloning self
-                                        Box::new(self.clone()),
-                                        (e.len() as u16 + 2, 1),
-                                        color::Red,
-                                        "Torrent".to_owned(),
-                                    )) as Box<Component>,
-                                ))
-                            })
-                            .unwrap_or(InputResult::Key(Key::Char('e')))
-                    }
-                    Focus::Filter => {
-                        f_push!(self, ctx, 'e');
-                        InputResult::Rerender
-                    }
-                }
-            }
-            Key::Ctrl('f') => {
+            (Key::Ctrl('f'), _) => {
                 self.focus = Focus::Filter;
                 self.filter.0 = true;
-                InputResult::Rerender
             }
-            Key::Char('H') => match self.focus {
-                Focus::Filter => {
-                    f_push!(self, ctx, 'H');
-                    InputResult::Rerender
-                }
-                Focus::Details => {
-                    if self.details.0 > 0 {
-                        self.details.0 -= 1;
-                        InputResult::Rerender
-                    } else {
-                        InputResult::Key(Key::Char('H'))
-                    }
-                }
-                _ => InputResult::Key(Key::Char('H')),
-            },
-            Key::Char('L') => match self.focus {
-                Focus::Filter => {
-                    f_push!(self, ctx, 'L');
-                    InputResult::Rerender
-                }
-                Focus::Details => {
-                    if self.details.0 < self.details.1.len() - 1 {
-                        self.details.0 += 1;
-                        InputResult::Rerender
-                    } else {
-                        InputResult::Key(Key::Char('L'))
-                    }
-                }
-                _ => InputResult::Key(Key::Char('L')),
-            },
-            Key::Char('J') => match self.focus {
-                Focus::Filter => {
-                    f_push!(self, ctx, 'J');
-                    InputResult::Rerender
-                }
-                Focus::Torrents if !self.details.1.is_empty() => {
-                    self.focus = Focus::Details;
-                    InputResult::Rerender
-                }
-                _ => InputResult::Key(Key::Char('J')),
-            },
-            Key::Char('K') => match self.focus {
-                Focus::Filter => {
-                    f_push!(self, ctx, 'K');
-                    InputResult::Rerender
-                }
-                Focus::Details => {
-                    self.focus = Focus::Torrents;
-                    InputResult::Rerender
-                }
-                _ => InputResult::Key(Key::Char('K')),
-            },
-            Key::Char('j') => match self.focus {
-                Focus::Filter => {
-                    f_push!(self, ctx, 'j');
-                    InputResult::Rerender
-                }
-                Focus::Torrents if self.torrents.0 + 1 < self.torrents.1.len() => {
-                    self.torrents.0 += 1;
-                    InputResult::Rerender
-                }
-                _ => InputResult::Key(Key::Char('j')),
-            },
-            Key::Char('k') => match self.focus {
-                Focus::Filter => {
-                    f_push!(self, ctx, 'k');
-                    InputResult::Rerender
-                }
-                Focus::Torrents if self.torrents.0 > 0 => {
-                    self.torrents.0 -= 1;
-                    InputResult::Rerender
-                }
-                _ => InputResult::Key(Key::Char('k')),
-            },
-            Key::Char('h') => match self.focus {
-                Focus::Filter => {
-                    f_push!(self, ctx, 'h');
-                    InputResult::Rerender
-                }
-                Focus::Details => {
-                    if self.details.0 > 0 {
-                        self.details.0 -= 1;
-                        InputResult::Rerender
-                    } else {
-                        InputResult::Key(Key::Char('h'))
-                    }
-                }
-                _ => InputResult::Key(Key::Char('h')),
-            },
-            Key::Char('l') => match self.focus {
-                Focus::Filter => {
-                    f_push!(self, ctx, 'l');
-                    InputResult::Rerender
-                }
-                Focus::Details => {
-                    if self.details.0 + 1 != self.details.1.len() {
-                        self.details.0 += 1;
-                        InputResult::Rerender
-                    } else {
-                        InputResult::Key(Key::Char('l'))
-                    }
-                }
-                _ => InputResult::Key(Key::Char('l')),
-            },
-            Key::Up => match self.focus {
-                Focus::Torrents if self.torrents.0 > 0 => {
-                    self.torrents.0 -= 1;
-                    InputResult::Rerender
-                }
-                _ => InputResult::Key(Key::Up),
-            },
-            Key::Down => match self.focus {
-                Focus::Torrents if self.torrents.0 + 1 < self.torrents.1.len() => {
-                    self.torrents.0 += 1;
-                    InputResult::Rerender
-                }
-                _ => InputResult::Key(Key::Down),
-            },
-            Key::PageUp => match self.focus {
-                Focus::Torrents if self.torrents.0 >= height as usize => {
-                    self.torrents.0 -= height as usize;
-                    InputResult::Rerender
-                }
-                Focus::Torrents => {
-                    self.torrents.0 = 0;
-                    InputResult::Rerender
-                }
-                _ => InputResult::Key(Key::PageUp),
-            },
-            Key::PageDown => match self.focus {
-                Focus::Torrents if self.torrents.0 + (height as usize) < self.torrents.1.len() => {
-                    self.torrents.0 += height as usize;
-                    InputResult::Rerender
-                }
-                Focus::Torrents => {
-                    self.torrents.0 = self.torrents.1.len() - 1;
-                    InputResult::Rerender
-                }
-                _ => InputResult::Key(Key::PageDown),
-            },
-            Key::Left => match self.focus {
-                Focus::Details => {
-                    if self.details.0 > 0 {
-                        self.details.0 -= 1;
-                        InputResult::Rerender
-                    } else {
-                        InputResult::Key(Key::Left)
-                    }
-                }
-                Focus::Filter => {
-                    self.filter.1.cursor_left();
-                    InputResult::Rerender
-                }
-                _ => InputResult::Key(Key::Left),
-            },
-            Key::Right => match self.focus {
-                Focus::Details => {
-                    if self.details.0 + 1 != self.details.1.len() {
-                        self.details.0 += 1;
-                        InputResult::Rerender
-                    } else {
-                        InputResult::Key(Key::Right)
-                    }
-                }
-                Focus::Filter => {
-                    self.filter.1.cursor_right();
-                    InputResult::Rerender
-                }
-                _ => InputResult::Key(Key::Right),
-            },
-            Key::Backspace => match self.focus {
-                Focus::Filter => {
-                    self.filter.1.backspace();
-                    self.filter.1.update(ctx);
-                    InputResult::Rerender
-                }
-                _ => InputResult::Key(Key::Backspace),
-            },
-            Key::Delete => match self.focus {
-                Focus::Filter => {
-                    self.filter.1.delete();
-                    self.filter.1.update(ctx);
-                    InputResult::Rerender
-                }
-                _ => InputResult::Key(Key::Delete),
-            },
-            Key::Home => match self.focus {
-                Focus::Torrents => {
-                    self.torrents.0 = 0;
-                    InputResult::Rerender
-                }
-                Focus::Details => {
-                    self.details.0 = 0;
-                    InputResult::Rerender
-                }
-                Focus::Filter => {
-                    self.filter.1.home();
-                    InputResult::Rerender
-                }
-            },
-            Key::End => match self.focus {
-                Focus::Torrents => {
-                    self.torrents.0 = self.torrents.1.len().saturating_sub(1);
-                    InputResult::Rerender
-                }
-                Focus::Details => {
+
+            (Key::Ctrl('s'), Focus::Filter) => {
+                self.filter.1.cycle();
+                self.filter.1.update(ctx);
+            }
+
+            (Key::Esc, Focus::Filter) => {
+                self.focus = Focus::Torrents;
+            }
+
+            (Key::Backspace, Focus::Filter) => {
+                self.filter.1.backspace();
+                self.filter.1.update(ctx);
+            }
+
+            (Key::Delete, Focus::Filter) => {
+                self.filter.1.delete();
+                self.filter.1.update(ctx);
+            }
+
+            // Movement Keys
+            (Key::Home, Focus::Filter) => {
+                self.filter.1.home();
+            }
+            (Key::Home, Focus::Torrents) => {
+                self.torrents.0 = 0;
+            }
+            (Key::Home, Focus::Details) => {
+                self.details.0 = 0;
+            }
+
+            (Key::End, Focus::Filter) => {
+                self.filter.1.end();
+            }
+            (Key::End, Focus::Torrents) => {
+                self.torrents.0 = self.torrents.1.len().saturating_sub(1);
+            }
+            (Key::End, Focus::Details) => {
+                self.details.0 = self.details.1.len() - 1;
+            }
+
+            (Key::PageUp, Focus::Torrents) if self.torrents.0 < height as usize => {
+                self.torrents.0 = 0;
+            }
+            (Key::PageUp, Focus::Torrents) => {
+                self.torrents.0 -= height as usize;
+            }
+
+            (Key::PageDown, Focus::Torrents)
+                if self.torrents.0 + (height as usize) > self.torrents.1.len() =>
+            {
+                self.torrents.0 = self.torrents.1.len() - 1;
+            }
+            (Key::PageDown, Focus::Torrents) => {
+                self.torrents.0 += height as usize;
+            }
+
+            (Key::Up, Focus::Torrents) | (Key::Char('k'), Focus::Torrents)
+                if self.torrents.0 > 0 =>
+            {
+                self.torrents.0 -= 1;
+            }
+
+            (Key::Down, Focus::Torrents) | (Key::Char('j'), Focus::Torrents)
+                if self.torrents.0 + 1 < self.torrents.1.len() =>
+            {
+                self.torrents.0 += 1;
+            }
+
+            (Key::Left, Focus::Filter) => self.filter.1.cursor_left(),
+            (Key::Left, Focus::Details) | (Key::Char('h'), Focus::Details)
+                if self.details.0 > 0 =>
+            {
+                self.details.0 -= 1;
+            }
+
+            (Key::Right, Focus::Filter) => self.filter.1.cursor_right(),
+            (Key::Right, Focus::Details) | (Key::Char('l'), Focus::Details)
+                if self.details.0 + 1 != self.details.1.len() =>
+            {
+                self.details.0 += 1;
+            }
+
+            // Key::Char
+            (Key::Char('\n'), Focus::Torrents) if self.filter.0 => {
+                self.focus = Focus::Filter;
+            }
+
+            (Key::Char('d'), Focus::Torrents) if !self.torrents.1.is_empty() => {
+                if let Some(pos) = self.details
+                    .1
+                    .iter()
+                    .position(|dt| dt.inner().id == self.torrents.1[self.torrents.0].id)
+                {
+                    self.details.0 = pos;
+                } else {
+                    self.details.1.push(TorrentDetailsPanel::new(
+                        self.torrents.1[self.torrents.0].clone(),
+                    ));
                     self.details.0 = self.details.1.len() - 1;
-                    InputResult::Rerender
                 }
-                Focus::Filter => {
-                    self.filter.1.end();
-                    InputResult::Rerender
+                self.focus = Focus::Details;
+            }
+
+            (Key::Char('E'), Focus::Torrents) | (Key::Char('E'), Focus::Details) => {
+                return if self.focus == Focus::Torrents {
+                    self.torrents.1.get(self.torrents.0)
+                } else {
+                    self.details.1.get(self.details.0).map(|d| d.inner())
+                }.and_then(|s| {
+                    self.trackers
+                        .iter()
+                        .find(|&&(ref tra, ref other_tra)| {
+                            s.id == tra.torrent_id
+                                || other_tra
+                                    .binary_search_by(|&(_, ref t)| t.cmp(&s.id))
+                                    .is_ok()
+                        })
+                        .and_then(|tra| tra.0.error.clone())
+                })
+                    .and_then(|e| {
+                        let l = e.len();
+                        Some(InputResult::ReplaceWith(
+                            Box::new(widgets::OwnedOverlay::new(
+                                widgets::CloseOnInput::new(widgets::IgnoreRpc::new(
+                                    widgets::Text::<_, align::x::Center, align::y::Top>::new(
+                                        true,
+                                        e,
+                                    ),
+                                )),
+                                // FIXME: There has to be a better way than cloning self
+                                Box::new(self.clone()),
+                                (l as u16 + 2, 1),
+                                color::Red,
+                                "Tracker".to_owned(),
+                            )) as Box<Component>,
+                        ))
+                    })
+                    .unwrap_or(InputResult::Key(Key::Char('E')));
+            }
+
+            (Key::Char('e'), Focus::Torrents) | (Key::Char('e'), Focus::Details) => {
+                return if self.focus == Focus::Torrents {
+                    self.torrents.1.get(self.torrents.0)
+                } else {
+                    self.details.1.get(self.details.0).map(|d| d.inner())
+                }.and_then(|t| t.error.as_ref())
+                    .and_then(|e| {
+                        Some(InputResult::ReplaceWith(
+                            Box::new(widgets::OwnedOverlay::new(
+                                widgets::CloseOnInput::new(widgets::IgnoreRpc::new(
+                                    widgets::Text::<_, align::x::Center, align::y::Top>::new(
+                                        true,
+                                        e.clone(),
+                                    ),
+                                )),
+                                // FIXME: There has to be a better way than cloning self
+                                Box::new(self.clone()),
+                                (e.len() as u16 + 2, 1),
+                                color::Red,
+                                "Torrent".to_owned(),
+                            )) as Box<Component>,
+                        ))
+                    })
+                    .unwrap_or(InputResult::Key(Key::Char('e')));
+            }
+
+            (Key::Char('J'), Focus::Torrents) if !self.details.1.is_empty() => {
+                self.focus = Focus::Details;
+            }
+
+            (Key::Char('K'), Focus::Details) => {
+                self.focus = Focus::Torrents;
+            }
+
+            (Key::Char('q'), Focus::Details) => {
+                // This is ok, because details only focused when not empty
+                // FIXME: NLL
+                let i = self.details.0;
+                self.details.1.remove(i);
+                self.details.0.saturating_sub(1);
+                if self.details.1.is_empty() {
+                    self.focus = Focus::Torrents;
                 }
-            },
-            Key::Char(k) => match self.focus {
-                Focus::Filter => {
-                    f_push!(self, ctx, k);
-                    InputResult::Rerender
-                }
-                _ => InputResult::Key(Key::Char(k)),
-            },
-            ret => InputResult::Key(ret),
+            }
+
+            (Key::Char('t'), Focus::Torrents) | (Key::Char('t'), Focus::Details) => {
+                self.trackers_displ = !self.trackers_displ;
+            }
+
+            // Catch all filter input
+            (Key::Char(c), Focus::Filter) => {
+                self.filter.1.push(c);
+                self.filter.1.update(ctx);
+            }
+
+            // Bounce unused
+            _ => {
+                return InputResult::Key(k);
+            }
         }
+        InputResult::Rerender
     }
 }
 
@@ -763,7 +557,15 @@ impl Renderable for MainPanel {
         let draw_details = |target: &mut _, width, height, x, y| {
             // FIXME: The unsafe avoids clones; This is perfectly safe but not possible without
             // "Closures Capture Disjoint Fields" safely
-            widgets::BorrowedSameTabs::new(unsafe{::std::slice::from_raw_parts_mut(self.details.1.as_ptr() as *mut TorrentDetailsPanel, self.details.1.len()) }, self.details.0).render(target, width, height, x, y);
+            widgets::BorrowedSameTabs::new(
+                unsafe {
+                    ::std::slice::from_raw_parts_mut(
+                        self.details.1.as_ptr() as *mut TorrentDetailsPanel,
+                        self.details.1.len(),
+                    )
+                },
+                self.details.0,
+            ).render(target, width, height, x, y);
         };
         let draw_footer = |target: &mut _, width, height, x, y| {
             widgets::Text::<_, align::x::Left, align::y::Top>::new(
