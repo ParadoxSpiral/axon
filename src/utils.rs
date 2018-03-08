@@ -105,8 +105,6 @@ use termion::color;
 use unicode_segmentation::UnicodeSegmentation;
 use unicode_width::UnicodeWidthStr;
 
-use std::cmp::Ordering;
-
 use rpc::RpcContext;
 use view::tui::widgets;
 
@@ -159,27 +157,6 @@ pub fn date_diff_now(date: DateTime<Utc>) -> String {
         res += &*format!("{}d ", d);
     }
     res + &*format!("{:0>2}:{:0>2}:{:0>2}", h, m, s)
-}
-
-pub fn insert_sorted<T: ::std::fmt::Debug, F>(v: &mut Vec<T>, ins: T, mut cmp_t: T, mut cmp_fn: F)
-where
-    F: FnMut(&mut T, &mut T) -> Ordering,
-{
-    #[cfg(feature = "dbg")]
-    trace!(*::S_VIEW, "Sort in: {:?}", v);
-    let mut pos = v.len();
-    for (i, ex_e) in v.iter_mut().enumerate() {
-        match cmp_fn(&mut cmp_t, ex_e) {
-            Ordering::Equal | Ordering::Less => {
-                pos = i;
-                break;
-            }
-            _ => {}
-        }
-    }
-    v.insert(pos, ins);
-    #[cfg(feature = "dbg")]
-    trace!(*::S_VIEW, "Inserted at: {}", pos);
 }
 
 #[derive(Clone)]

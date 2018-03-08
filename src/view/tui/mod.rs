@@ -789,17 +789,24 @@ impl HandleRpc for MainPanel {
                                 self.server = s;
                             }
                             Resource::Torrent(t) => {
-                                let mut cmp_t = t.clone();
-                                cmp_t.name = cmp_t.name.as_ref().map(|n| n.to_lowercase());
-                                ::utils::insert_sorted(&mut self.torrents.1, t, cmp_t, |t, ex| {
-                                    t.name.as_mut().cmp(&ex.name.as_ref().map(|n| {
-                                        name_cache
-                                            .as_mut()
-                                            .unwrap()
-                                            .entry(ex.id.clone())
-                                            .or_insert_with(|| n.to_lowercase())
-                                    }))
-                                });
+                                let mut name = t.name.as_ref().map(|n| n.to_lowercase());
+                                let idx = self.torrents
+                                    .1
+                                    .binary_search_by(|probe| {
+                                        probe
+                                            .name
+                                            .as_ref()
+                                            .map(|n| {
+                                                name_cache
+                                                    .as_mut()
+                                                    .unwrap()
+                                                    .entry(probe.id.clone())
+                                                    .or_insert_with(|| n.to_lowercase())
+                                            })
+                                            .cmp(&name.as_mut())
+                                    })
+                                    .unwrap_or_else(|e| e);
+                                self.torrents.1.insert(idx, t);
                             }
                             Resource::Tracker(t) => {
                                 let mut new_pos = self.trackers.len();
@@ -808,12 +815,10 @@ impl HandleRpc for MainPanel {
                                 {
                                     match t.url.cmp(&base.url) {
                                         Ordering::Equal => {
-                                            ::utils::insert_sorted(
-                                                others,
-                                                (t.id.clone(), t.torrent_id.clone()),
-                                                (t.id, t.torrent_id),
-                                                |t, ex| t.1.cmp(&ex.1),
-                                            );
+                                            let idx = others
+                                                .binary_search_by(|probe| probe.1.cmp(&t.id))
+                                                .unwrap_or_else(|e| e);
+                                            others.insert(idx, (t.id, t.torrent_id));
                                             continue 'UPDATES;
                                         }
                                         Ordering::Less => {
