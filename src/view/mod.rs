@@ -167,19 +167,17 @@ impl DisplayState {
     }
     fn input(&mut self, ctx: &RpcContext, k: Key, width: u16, height: u16) -> InputResult {
         // FIXME: Shitty borrow-checker pleaser
-        match *self {
-            DisplayState::Component(ref mut cmp) => {
-                return cmp.input(ctx, k, width, height);
-            }
-            _ => (),
+        //
+        if let DisplayState::Component(ref mut cmp) = *self {
+            return cmp.input(ctx, k, width, height);
         }
-        let (clone, drop) = if let &mut DisplayState::GlobalErr(_, _, ref mut cmp) = self {
-            match cmp {
-                &mut TopLevelComponent::Login(ref l) => (
+        let (clone, drop) = if let DisplayState::GlobalErr(_, _, ref mut cmp) = *self {
+            match *cmp {
+                TopLevelComponent::Login(ref l) => (
                     DisplayState::Component(TopLevelComponent::Login(l.clone())),
                     true,
                 ),
-                &mut TopLevelComponent::Other(ref mut o) => (
+                TopLevelComponent::Other(ref mut o) => (
                     DisplayState::Component(TopLevelComponent::Other(unsafe {
                         Box::from_raw((&mut **o) as *mut Component)
                     })),
@@ -215,7 +213,7 @@ impl DisplayState {
         let clone = DisplayState::GlobalErr(
             err,
             name,
-            if let &mut DisplayState::Component(ref mut cmp) = self {
+            if let DisplayState::Component(ref mut cmp) = *self {
                 TopLevelComponent::Other(unsafe { Box::from_raw(cmp as *mut Component) })
             } else {
                 unreachable!()
@@ -240,13 +238,9 @@ impl Renderable for TopLevelComponent {
         }
     }
     fn render(&mut self, target: &mut Vec<u8>, width: u16, height: u16, x_off: u16, y_off: u16) {
-        match self {
-            &mut TopLevelComponent::Login(ref mut l) => {
-                l.render(target, width, height, x_off, y_off)
-            }
-            &mut TopLevelComponent::Other(ref mut o) => {
-                o.render(target, width, height, x_off, y_off)
-            }
+        match *self {
+            TopLevelComponent::Login(ref mut l) => l.render(target, width, height, x_off, y_off),
+            TopLevelComponent::Other(ref mut o) => o.render(target, width, height, x_off, y_off),
         }
     }
 }
@@ -254,9 +248,9 @@ impl HandleInput for TopLevelComponent {
     fn input(&mut self, ctx: &RpcContext, k: Key, width: u16, height: u16) -> InputResult {
         // We know that LoginPanel will only return a MainPanel with ReplaceWith, any errors are
         // handled internally for simplicity
-        match match self {
-            &mut TopLevelComponent::Login(ref mut l) => l.input(ctx, k, width, height),
-            &mut TopLevelComponent::Other(ref mut o) => o.input(ctx, k, width, height),
+        match match *self {
+            TopLevelComponent::Login(ref mut l) => l.input(ctx, k, width, height),
+            TopLevelComponent::Other(ref mut o) => o.input(ctx, k, width, height),
         } {
             InputResult::ReplaceWith(cmp) => {
                 mem::replace(self, TopLevelComponent::Other(cmp));
@@ -268,8 +262,8 @@ impl HandleInput for TopLevelComponent {
 }
 impl HandleRpc for TopLevelComponent {
     fn rpc(&mut self, ctx: &RpcContext, msg: SMessage) -> bool {
-        match self {
-            &mut TopLevelComponent::Other(ref mut o) => o.rpc(ctx, msg),
+        match *self {
+            TopLevelComponent::Other(ref mut o) => o.rpc(ctx, msg),
             _ => false,
         }
     }
