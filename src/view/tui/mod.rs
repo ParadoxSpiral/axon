@@ -230,7 +230,8 @@ enum Focus {
 pub struct MainPanel {
     focus: Focus,
     filter: (bool, Filter),
-    torrents: (usize, Vec<Torrent>),
+    // lower bound of torrent selection,  current pos, _
+    torrents: (usize, usize, Vec<Torrent>),
     // tracker base, (tracker id, torrent id)
     trackers: Vec<(Tracker, Vec<(String, String)>)>,
     trackers_displ: bool,
@@ -244,7 +245,7 @@ impl MainPanel {
         let mut p = MainPanel {
             focus: Focus::Torrents,
             filter: (false, Filter::new(ctx.next_serial(), ctx.next_serial())),
-            torrents: (0, Vec::new()),
+            torrents: (0, 0, Vec::new()),
             trackers: Vec::new(),
             trackers_displ: false,
             details: (0, Vec::new()),
@@ -260,6 +261,9 @@ impl Component for MainPanel {}
 
 impl HandleInput for MainPanel {
     fn input(&mut self, ctx: &RpcContext, k: Key, _: u16, height: u16) -> InputResult {
+        // - 2 because of the server footer
+        let torr_height = height.saturating_sub(2) as usize;
+
         match (k, self.focus) {
             // Special keys
             (Key::Ctrl('f'), Focus::Filter) => {
@@ -298,6 +302,7 @@ impl HandleInput for MainPanel {
             }
             (Key::Home, Focus::Torrents) => {
                 self.torrents.0 = 0;
+                self.torrents.1 = 0;
             }
             (Key::Home, Focus::Details) => {
                 self.details.0 = 0;
@@ -307,38 +312,59 @@ impl HandleInput for MainPanel {
                 self.filter.1.end();
             }
             (Key::End, Focus::Torrents) => {
-                self.torrents.0 = self.torrents.1.len().saturating_sub(1);
+                let l = self.torrents.2.len();
+                self.torrents.0 = l.saturating_sub(torr_height);
+                self.torrents.1 = l.saturating_sub(1);
             }
             (Key::End, Focus::Details) => {
                 self.details.0 = self.details.1.len() - 1;
             }
 
-            (Key::PageUp, Focus::Torrents) if self.torrents.0 < height as usize => {
+            (Key::PageUp, Focus::Torrents) if self.torrents.1 < torr_height => {
                 self.torrents.0 = 0;
+                self.torrents.1 = 0;
             }
             (Key::PageUp, Focus::Torrents) => {
-                self.torrents.0 -= height as usize;
+                if self.torrents.0 < torr_height {
+                    self.torrents.0 = 0;
+                } else {
+                    self.torrents.0 -= torr_height;
+                }
+                self.torrents.1 -= torr_height;
             }
 
             (Key::PageDown, Focus::Torrents)
-                if self.torrents.0 + (height as usize) > self.torrents.1.len() =>
+                if self.torrents.1 + torr_height >= self.torrents.2.len() =>
             {
-                self.torrents.0 = self.torrents.1.len() - 1;
+                let l = self.torrents.2.len();
+                self.torrents.0 = l.saturating_sub(torr_height);
+                self.torrents.1 = l.saturating_sub(1);
             }
             (Key::PageDown, Focus::Torrents) => {
-                self.torrents.0 += height as usize;
+                if self.torrents.0 + 2 * torr_height >= self.torrents.2.len() {
+                    self.torrents.0 = self.torrents.2.len().saturating_sub(torr_height);
+                } else {
+                    self.torrents.0 += torr_height;
+                }
+                self.torrents.1 += torr_height;
             }
 
             (Key::Up, Focus::Torrents) | (Key::Char('k'), Focus::Torrents)
-                if self.torrents.0 > 0 =>
+                if self.torrents.1 > 0 =>
             {
-                self.torrents.0 -= 1;
+                if self.torrents.0 == self.torrents.1 {
+                    self.torrents.0 -= 1;
+                }
+                self.torrents.1 -= 1;
             }
 
             (Key::Down, Focus::Torrents) | (Key::Char('j'), Focus::Torrents)
-                if self.torrents.0 + 1 < self.torrents.1.len() =>
+                if self.torrents.1 + 1 < self.torrents.2.len() =>
             {
-                self.torrents.0 += 1;
+                if self.torrents.0 + torr_height.saturating_sub(1) == self.torrents.1 {
+                    self.torrents.0 += 1;
+                }
+                self.torrents.1 += 1;
             }
 
             (Key::Left, Focus::Filter) => self.filter.1.cursor_left(),
@@ -360,16 +386,16 @@ impl HandleInput for MainPanel {
                 self.focus = Focus::Filter;
             }
 
-            (Key::Char('d'), Focus::Torrents) if !self.torrents.1.is_empty() => {
+            (Key::Char('d'), Focus::Torrents) if !self.torrents.2.is_empty() => {
                 if let Some(pos) = self.details
                     .1
                     .iter()
-                    .position(|dt| dt.inner().id == self.torrents.1[self.torrents.0].id)
+                    .position(|dt| dt.inner().id == self.torrents.2[self.torrents.1].id)
                 {
                     self.details.0 = pos;
                 } else {
                     self.details.1.push(TorrentDetailsPanel::new(
-                        self.torrents.1[self.torrents.0].clone(),
+                        self.torrents.2[self.torrents.1].clone(),
                     ));
                     self.details.0 = self.details.1.len() - 1;
                 }
@@ -378,7 +404,7 @@ impl HandleInput for MainPanel {
 
             (Key::Char('E'), Focus::Torrents) | (Key::Char('E'), Focus::Details) => {
                 return if self.focus == Focus::Torrents {
-                    self.torrents.1.get(self.torrents.0)
+                    self.torrents.2.get(self.torrents.1)
                 } else {
                     self.details.1.get(self.details.0).map(|d| d.inner())
                 }.and_then(|s| {
@@ -415,7 +441,7 @@ impl HandleInput for MainPanel {
 
             (Key::Char('e'), Focus::Torrents) | (Key::Char('e'), Focus::Details) => {
                 return if self.focus == Focus::Torrents {
-                    self.torrents.1.get(self.torrents.0)
+                    self.torrents.2.get(self.torrents.1)
                 } else {
                     self.details.1.get(self.details.0).map(|d| d.inner())
                 }.and_then(|t| t.error.as_ref())
@@ -482,15 +508,31 @@ impl Renderable for MainPanel {
         "torrents".into()
     }
     fn render(&mut self, target: &mut Vec<u8>, width: u16, height: u16, x_off: u16, y_off: u16) {
+        // If the display got downsized, we possibly need to tighten the torrent selection
+        let d = self.torrents.1 - self.torrents.0;
+        // - 2 because of the server footer, -1 because of 1-0 index conversion
+        let torr_height = height.saturating_sub(3) as usize;
+        if d > torr_height {
+            self.torrents.1 -= d - torr_height;
+        }
+
         let draw_torrents = |target: &mut _, width, height, x, y| {
-            let ceil = if self.filter.0 { height - 1 } else { height };
-            for (i, t) in self.torrents.1.iter().take(ceil as _).enumerate() {
+            for (i, t) in self.torrents
+                    .2
+                    .iter()
+                    .skip(self.torrents.0)
+                    .take(height as _)
+                    .enumerate() {
                 let (c_s, c_e) = match self.focus {
-                    Focus::Torrents if self.torrents.0 == i && t.error.is_some() => (
-                        format!("{}{}", color::Fg(color::Cyan), color::Bg(color::Red)),
-                        format!("{}{}", color::Fg(color::Reset), color::Bg(color::Reset)),
-                    ),
-                    Focus::Torrents if self.torrents.0 == i => (
+                    Focus::Torrents
+                        if i + self.torrents.0 == self.torrents.1 && t.error.is_some() =>
+                    {
+                        (
+                            format!("{}{}", color::Fg(color::Cyan), color::Bg(color::Red)),
+                            format!("{}{}", color::Fg(color::Reset), color::Bg(color::Reset)),
+                        )
+                    }
+                    Focus::Torrents if i + self.torrents.0 == self.torrents.1 => (
                         format!("{}", color::Fg(color::Cyan)),
                         format!("{}", color::Fg(color::Reset)),
                     ),
@@ -522,7 +564,7 @@ impl Renderable for MainPanel {
         };
         let draw_trackers = |target: &mut _, width, height, x, y| {
             let sel_tor = match self.focus {
-                Focus::Torrents | Focus::Filter => self.torrents.1.get(self.torrents.0),
+                Focus::Torrents | Focus::Filter => self.torrents.2.get(self.torrents.1),
                 Focus::Details => self.details.1.get(self.details.0).map(|t| t.inner()),
             };
             for (i, &(ref base_trac, ref others)) in
@@ -710,8 +752,8 @@ impl HandleRpc for MainPanel {
                 // FIXME: Some shittiness can go once closure disjoint field borrows land
                 let mut i = 0;
                 let mut dec = 0;
-                let idx = self.torrents.0;
-                self.torrents.1.retain(|t| {
+                let idx = self.torrents.1;
+                self.torrents.2.retain(|t| {
                     i += 1;
                     if ids.contains(&t.id) {
                         if i - 1 == idx && i != 1 {
@@ -722,9 +764,8 @@ impl HandleRpc for MainPanel {
                         true
                     }
                 });
-                if dec > 0 {
-                    self.torrents.0.saturating_sub(dec);
-                }
+                self.torrents.0.saturating_sub(dec);
+                self.torrents.1.saturating_sub(dec);
 
                 i = 0;
                 dec = 0;
@@ -740,9 +781,7 @@ impl HandleRpc for MainPanel {
                         true
                     }
                 });
-                if dec > 0 {
-                    self.torrents.0.saturating_sub(dec);
-                }
+                self.details.0.saturating_sub(dec);
                 if self.details.1.is_empty() && self.focus == Focus::Details {
                     self.focus = Focus::Torrents;
                 }
@@ -755,15 +794,7 @@ impl HandleRpc for MainPanel {
                     {
                         let (ref mut base, ref mut others) = self.trackers[idx];
 
-                        others.retain(
-                            |&(ref tra_id, _)| {
-                                if ids.contains(&tra_id) {
-                                    false
-                                } else {
-                                    true
-                                }
-                            },
-                        );
+                        others.retain(|&(ref tra_id, _)| !ids.contains(tra_id));
 
                         if ids.contains(&base.id) {
                             if others.is_empty() {
@@ -803,7 +834,7 @@ impl HandleRpc for MainPanel {
                             Resource::Torrent(t) => {
                                 let mut name = t.name.as_ref().map(|n| n.to_lowercase());
                                 let idx = self.torrents
-                                    .1
+                                    .2
                                     .binary_search_by(|probe| {
                                         probe
                                             .name
@@ -818,7 +849,7 @@ impl HandleRpc for MainPanel {
                                             .cmp(&name.as_mut())
                                     })
                                     .unwrap_or_else(|e| e);
-                                self.torrents.1.insert(idx, t);
+                                self.torrents.2.insert(idx, t);
                             }
                             Resource::Tracker(t) => {
                                 let mut new_pos = self.trackers.len();
@@ -828,7 +859,7 @@ impl HandleRpc for MainPanel {
                                     match t.url.cmp(&base.url) {
                                         Ordering::Equal => {
                                             let idx = others
-                                                .binary_search_by(|probe| probe.1.cmp(&t.id))
+                                                .binary_search_by_key(&&t.id, |&(_, ref id)| id)
                                                 .unwrap_or_else(|e| e);
                                             others.insert(idx, (t.id, t.torrent_id));
                                             continue 'UPDATES;
@@ -897,7 +928,7 @@ impl HandleRpc for MainPanel {
                             // all of them, can a tracker have multiple errors?
                             for &mut (ref mut base, ref others) in &mut self.trackers {
                                 if id == base.id
-                                    || others.iter().any(|&(ref tra_id, _)| id == *tra_id)
+                                    || others.binary_search_by_key(&&id, |&(_, ref id)| id).is_ok()
                                 {
                                     base.last_report = last_report;
                                     base.error = error;
@@ -905,10 +936,22 @@ impl HandleRpc for MainPanel {
                                 }
                             }
                         }
-                        // These we ignore
-                        SResourceUpdate::UserData { .. } => (),
                         // Torrent updates
-                        _ => {
+                        SResourceUpdate::Throttle {
+                            kind: ResourceKind::Torrent,
+                            ..
+                        }
+                        | SResourceUpdate::Rate {
+                            kind: ResourceKind::Torrent,
+                            ..
+                        }
+                        | SResourceUpdate::TorrentStatus { .. }
+                        | SResourceUpdate::TorrentTransfer { .. }
+                        | SResourceUpdate::TorrentPeers { .. }
+                        | SResourceUpdate::TorrentPicker { .. }
+                        | SResourceUpdate::TorrentPriority { .. }
+                        | SResourceUpdate::TorrentPath { .. }
+                        | SResourceUpdate::TorrentPieces { .. } => {
                             for t in self.details.1.iter_mut().map(|t| t.inner_mut()) {
                                 if upd.id() == &*t.id {
                                     t.update(upd.clone());
@@ -916,13 +959,14 @@ impl HandleRpc for MainPanel {
                                     break;
                                 }
                             }
-                            for t in &mut self.torrents.1 {
+                            for t in &mut self.torrents.2 {
                                 if upd.id() == &*t.id {
                                     t.update(upd);
                                     break;
                                 }
                             }
                         }
+                        _ => (),
                     }
                 }
                 true
