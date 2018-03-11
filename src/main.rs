@@ -47,14 +47,9 @@ mod view;
 
 use termion::input::TermRead;
 
-use std::io;
-use std::sync::atomic::{AtomicBool, Ordering};
-
 use rpc::RpcContext;
 use view::View;
 use view::tui::InputResult;
-
-static RUNNING: AtomicBool = AtomicBool::new(true);
 
 #[cfg(feature = "dbg")]
 lazy_static! {
@@ -130,31 +125,37 @@ fn main() {
 
         // Input worker
         scope.spawn(|| {
-            let stdin = io::stdin();
+            let stdin = ::std::io::stdin();
             #[cfg(feature = "dbg")]
             trace!(*S_IO, "Entering loop");
             for ev in stdin.lock().keys() {
                 let res = if let Ok(k) = ev {
                     // Pass input through components
                     #[cfg(feature = "dbg")]
-                    debug!(*S_IO, "Handling {:?}", k);
+                    {
+                        if view.logged_in() {
+                            debug!(*S_IO, "Handling {:?}", k);
+                        } else {
+                            debug!(*S_IO, "Handling key in LoginPanel");
+                        }
+                    }
+
                     view.handle_input(&rpc, k)
                 } else {
                     #[cfg(feature = "dbg")]
                     crit!(*S_IO, "Fatal error: {}", ev.as_ref().unwrap_err());
-                    RUNNING.store(false, Ordering::Release);
-                    rpc.wake();
-                    view.wake();
+
+                    if view.logged_in() {
+                        rpc.disconnect();
+                    }
+                    rpc.disconnect();
+                    view.shutdown();
+
                     panic!("Unrecoverable error: {:?}", ev.unwrap_err())
                 };
 
                 match res {
                     InputResult::Close => {
-                        #[cfg(feature = "dbg")]
-                        debug!(*S_IO, "Closing");
-                        RUNNING.store(false, Ordering::Release);
-                        rpc.wake();
-                        view.wake();
                         break;
                     }
                     InputResult::Rerender => {

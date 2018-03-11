@@ -190,7 +190,7 @@ impl HandleInput for LoginPanel {
                 .map_err(|err| (format!("{}", err), "Url"))
                 .and_then(|server| {
                     let pass = self.pass.inner();
-                    ctx.init(server, pass)
+                    ctx.wait_init(server, pass.to_owned())
                 .map(|()| {
                     InputResult::ReplaceWith(Box::new(MainPanel::new(ctx)) as Box<Component>)
                 })

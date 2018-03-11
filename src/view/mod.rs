@@ -27,7 +27,7 @@ use std::cmp;
 use std::fmt::Display;
 use std::io::{self, Stdout, Write};
 use std::mem;
-use std::sync::atomic::Ordering;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
 use rpc::RpcContext;
@@ -38,6 +38,7 @@ pub struct View {
     content: Mutex<DisplayState>,
     render_buf: Mutex<Vec<u8>>,
     waiter: (Condvar, Mutex<()>),
+    running: AtomicBool,
     stdout: RefCell<RawTerminal<Stdout>>,
 }
 
@@ -56,12 +57,18 @@ impl View {
             ))),
             render_buf: Mutex::new(rb),
             stdout: RefCell::new(io::stdout().into_raw_mode().unwrap()),
+            running: AtomicBool::new(true),
             waiter: (Condvar::new(), Mutex::new(())),
         }
     }
 
     pub fn wake(&self) {
         self.waiter.0.notify_one();
+    }
+
+    pub fn shutdown(&self) {
+        self.running.store(false, Ordering::Release);
+        self.wake();
     }
 
     pub fn render(&self) {
@@ -84,7 +91,7 @@ impl View {
     }
 
     pub fn render_until_death(&self) {
-        while ::RUNNING.load(Ordering::Acquire) {
+        while self.running.load(Ordering::Acquire) {
             // Render  either every 5s or when input demands it
             self.render();
             self.waiter
@@ -96,10 +103,20 @@ impl View {
     pub fn handle_input(&self, ctx: &RpcContext, k: Key) -> InputResult {
         match k {
             Key::Ctrl('q') => if self.logged_in() {
-                ctx.wake();
+                #[cfg(feature = "dbg")]
+                debug!(*::S_VIEW, "Disconnecting");
+
+                ctx.disconnect();
                 self.connection_close(None);
+
                 InputResult::Rerender
             } else {
+                #[cfg(feature = "dbg")]
+                debug!(*::S_VIEW, "Closing");
+
+                ctx.disconnect();
+                self.shutdown();
+
                 InputResult::Close
             },
             _ => {
@@ -131,7 +148,7 @@ impl View {
         );
     }
 
-    fn logged_in(&self) -> bool {
+    pub fn logged_in(&self) -> bool {
         match *self.content.lock() {
             DisplayState::Component(TopLevelComponent::Login(_))
             | DisplayState::GlobalErr(_, _, TopLevelComponent::Login(_)) => false,
