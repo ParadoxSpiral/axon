@@ -567,16 +567,22 @@ impl Renderable for MainPanel {
                 Focus::Torrents | Focus::Filter => self.torrents.2.get(self.torrents.1),
                 Focus::Details => self.details.1.get(self.details.0).map(|t| t.inner()),
             };
+            let mut matched = 0;
             for (i, &(ref base_trac, ref others)) in
                 self.trackers.iter().take(height as _).enumerate()
             {
-                let matches = sel_tor
-                    .as_ref()
-                    .map(|s| {
-                        *s.id == base_trac.torrent_id
-                            || others.binary_search_by(|&(_, ref t)| t.cmp(&s.id)).is_ok()
-                    })
-                    .unwrap_or(false);
+                let matches = if matched < sel_tor.map(|t| t.trackers).unwrap_or(0) {
+                    matched += 1;
+                    sel_tor
+                        .as_ref()
+                        .map(|s| {
+                            *s.id == base_trac.torrent_id
+                                || others.binary_search_by(|&(_, ref t)| t.cmp(&s.id)).is_ok()
+                        })
+                        .unwrap_or(false)
+                } else {
+                    false
+                };
                 let (c_s, c_e) = match (matches, base_trac.error.is_some()) {
                     (true, true) => (
                         format!("{}{}", color::Fg(color::Cyan), color::Bg(color::Red)),
