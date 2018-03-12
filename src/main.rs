@@ -19,6 +19,7 @@ extern crate chrono;
 extern crate crossbeam;
 extern crate futures;
 extern crate humansize;
+extern crate natord;
 extern crate parking_lot;
 extern crate serde;
 extern crate serde_json;

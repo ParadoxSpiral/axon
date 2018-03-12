@@ -16,6 +16,7 @@
 pub mod widgets;
 
 use humansize::{file_size_opts as sopt, FileSize};
+use natord;
 use synapse_rpc::message::{CMessage, SMessage};
 use synapse_rpc::resource::{Resource, ResourceKind, SResourceUpdate, Server, Torrent, Tracker};
 use termion::{color, cursor};
@@ -838,23 +839,30 @@ impl HandleRpc for MainPanel {
                                 self.server = s;
                             }
                             Resource::Torrent(t) => {
-                                let mut name = t.name.as_ref().map(|n| n.to_lowercase());
+                                let mut name = t.name
+                                    .as_ref()
+                                    .map(|n| n.to_lowercase())
+                                    .unwrap_or_else(|| "".to_owned());
                                 let idx = self.torrents
                                     .2
                                     .binary_search_by(|probe| {
-                                        probe
-                                            .name
-                                            .as_ref()
-                                            .map(|n| {
-                                                name_cache
-                                                    .as_mut()
-                                                    .unwrap()
-                                                    .entry(probe.id.clone())
-                                                    .or_insert_with(|| n.to_lowercase())
-                                            })
-                                            .cmp(&name.as_mut())
+                                        natord::compare(
+                                            name_cache
+                                                .as_mut()
+                                                .unwrap()
+                                                .entry(probe.id.clone())
+                                                .or_insert_with(|| {
+                                                    probe
+                                                        .name
+                                                        .as_ref()
+                                                        .map(|n| n.to_lowercase())
+                                                        .unwrap_or("".to_owned())
+                                                }),
+                                            &name,
+                                        )
                                     })
                                     .unwrap_or_else(|e| e);
+                                name_cache.as_mut().unwrap().insert(t.id.clone(), name);
                                 self.torrents.2.insert(idx, t);
                             }
                             Resource::Tracker(t) => {
