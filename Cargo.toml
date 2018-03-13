@@ -27,3 +27,7 @@ slog-async = { version = "2", optional = true }
 
 [features]
 dbg = ["lazy_static", "slog", "slog-term", "slog-async", "parking_lot/deadlock_detection"]
+
+[profile.release]
+lto = true
+debug = true

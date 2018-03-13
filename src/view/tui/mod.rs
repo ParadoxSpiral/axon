@@ -636,23 +636,23 @@ impl Renderable for MainPanel {
                      Session: {:.2}, {}↑ {}↓   Lifetime: {:.2}, {}↑ {}↓",
                     self.server_version,
                     ::utils::date_diff_now(self.server.started),
-                    self.server.free_space.file_size(sopt::DECIMAL).unwrap(),
-                    self.server.rate_up.file_size(sopt::DECIMAL).unwrap(),
+                    self.server.free_space.file_size(sopt::BINARY).unwrap(),
+                    self.server.rate_up.file_size(sopt::BINARY).unwrap(),
                     self.server
                         .throttle_up
                         .map(|t| if t == -1 {
                             "∞".into()
                         } else {
-                            t.file_size(sopt::DECIMAL).unwrap()
+                            t.file_size(sopt::BINARY).unwrap()
                         })
                         .unwrap_or("∞".into()),
-                    self.server.rate_down.file_size(sopt::DECIMAL).unwrap(),
+                    self.server.rate_down.file_size(sopt::BINARY).unwrap(),
                     self.server
                         .throttle_down
                         .map(|t| if t == -1 {
                             "∞".into()
                         } else {
-                            t.file_size(sopt::DECIMAL).unwrap()
+                            t.file_size(sopt::BINARY).unwrap()
                         })
                         .unwrap_or("∞".into()),
                     if self.server.ses_transferred_down == 0 {
@@ -663,21 +663,21 @@ impl Renderable for MainPanel {
                     },
                     self.server
                         .ses_transferred_up
-                        .file_size(sopt::DECIMAL)
+                        .file_size(sopt::BINARY)
                         .unwrap(),
                     self.server
                         .ses_transferred_down
-                        .file_size(sopt::DECIMAL)
+                        .file_size(sopt::BINARY)
                         .unwrap(),
                     if self.server.transferred_down == 0 {
                         1.
                     } else {
                         self.server.transferred_up as f32 / self.server.transferred_down as f32
                     },
-                    self.server.transferred_up.file_size(sopt::DECIMAL).unwrap(),
+                    self.server.transferred_up.file_size(sopt::BINARY).unwrap(),
                     self.server
                         .transferred_down
-                        .file_size(sopt::DECIMAL)
+                        .file_size(sopt::BINARY)
                         .unwrap(),
                 ),
             ).render(target, width, height, x, y);
@@ -1045,26 +1045,26 @@ impl Renderable for TorrentDetailsPanel {
                 true,
                 format!(
                     "Rates: {}[{}]↑ {}[{}]↓    Lifetime: {}↑ {}↓",
-                    self.torr.rate_up.file_size(sopt::DECIMAL).unwrap(),
+                    self.torr.rate_up.file_size(sopt::BINARY).unwrap(),
                     self.torr
                         .throttle_up
                         .map(|t| if t == -1 {
                             "∞".into()
                         } else {
-                            t.file_size(sopt::DECIMAL).unwrap()
+                            t.file_size(sopt::BINARY).unwrap()
                         })
                         .unwrap_or("global".into()),
-                    self.torr.rate_down.file_size(sopt::DECIMAL).unwrap(),
+                    self.torr.rate_down.file_size(sopt::BINARY).unwrap(),
                     self.torr
                         .throttle_down
                         .map(|t| if t == -1 {
                             "∞".into()
                         } else {
-                            t.file_size(sopt::DECIMAL).unwrap()
+                            t.file_size(sopt::BINARY).unwrap()
                         })
                         .unwrap_or("global".into()),
-                    self.torr.transferred_up.file_size(sopt::DECIMAL).unwrap(),
-                    self.torr.transferred_down.file_size(sopt::DECIMAL).unwrap(),
+                    self.torr.transferred_up.file_size(sopt::BINARY).unwrap(),
+                    self.torr.transferred_down.file_size(sopt::BINARY).unwrap(),
                 ),
             ).render(target, width, 1, x_off, y_off + 1);
         }
@@ -1076,7 +1076,7 @@ impl Renderable for TorrentDetailsPanel {
                     "Size: {}    Progress: {}%    Availability: {}%    Priority: {}",
                     self.torr
                         .size
-                        .map(|p| p.file_size(sopt::DECIMAL).unwrap())
+                        .map(|p| p.file_size(sopt::BINARY).unwrap())
                         .unwrap_or("?".into()),
                     (self.torr.progress * 100.).round(),
                     (self.torr.availability * 100.).round(),
@@ -1100,7 +1100,7 @@ impl Renderable for TorrentDetailsPanel {
                         .unwrap_or("?".into()),
                     self.torr
                         .piece_size
-                        .map(|p| p.file_size(sopt::DECIMAL).unwrap())
+                        .map(|p| p.file_size(sopt::BINARY).unwrap())
                         .unwrap_or("?".into()),
                     self.torr.peers,
                     self.torr.trackers,
