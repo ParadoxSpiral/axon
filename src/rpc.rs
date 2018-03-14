@@ -132,7 +132,7 @@ impl<'v> RpcContext<'v> {
             let mut core = core.borrow_mut();
             let (sink, stream) = {
                 let timeout = Timeout::new(Duration::from_secs(10), &core.handle()).unwrap();
-                let fut = ClientBuilder::from_url(&url)
+                let fut = ClientBuilder::from_url(url)
                     .async_connect(None, &core.handle())
                     .map_err(|err| format!("{:?}", err))
                     .select2(

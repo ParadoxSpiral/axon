@@ -222,7 +222,7 @@ impl DisplayState {
     }
     fn global_err(&mut self, err: String, name: Option<String>) {
         // FIXME: Shitty borrow-checker pleaser
-        if let &mut DisplayState::GlobalErr(ref mut e_err, ref mut e_name, _) = self {
+        if let DisplayState::GlobalErr(ref mut e_err, ref mut e_name, _) = *self {
             *e_err = err;
             *e_name = name;
             return;

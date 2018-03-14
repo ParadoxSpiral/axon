@@ -645,7 +645,7 @@ impl Renderable for MainPanel {
                         } else {
                             t.file_size(sopt::BINARY).unwrap()
                         })
-                        .unwrap_or("∞".into()),
+                        .unwrap_or_else(|| "∞".into()),
                     self.server.rate_down.file_size(sopt::BINARY).unwrap(),
                     self.server
                         .throttle_down
@@ -654,7 +654,7 @@ impl Renderable for MainPanel {
                         } else {
                             t.file_size(sopt::BINARY).unwrap()
                         })
-                        .unwrap_or("∞".into()),
+                        .unwrap_or_else(|| "∞".into()),
                     if self.server.ses_transferred_down == 0 {
                         1.
                     } else {
@@ -793,7 +793,7 @@ impl HandleRpc for MainPanel {
                     self.focus = Focus::Torrents;
                 }
 
-                // FIXME: Once retain is fixed, use two nested .retains
+                // FIXME: Once drain_filter lands, use that
                 let mut idx = 0;
                 while idx < self.trackers.len() {
                     let mut rm = false;
@@ -810,6 +810,7 @@ impl HandleRpc for MainPanel {
                                 let last = others.pop().unwrap();
                                 base.id = last.0;
                                 base.torrent_id = last.1;
+                                // TODO: Once Vec of errors comes, don't forget to handle
                             }
                         }
                     }
@@ -856,7 +857,7 @@ impl HandleRpc for MainPanel {
                                                         .name
                                                         .as_ref()
                                                         .map(|n| n.to_lowercase())
-                                                        .unwrap_or("".to_owned())
+                                                        .unwrap_or_else(|| "".to_owned())
                                                 }),
                                             &name,
                                         )
@@ -1053,7 +1054,7 @@ impl Renderable for TorrentDetailsPanel {
                         } else {
                             t.file_size(sopt::BINARY).unwrap()
                         })
-                        .unwrap_or("global".into()),
+                        .unwrap_or_else(|| "global".into()),
                     self.torr.rate_down.file_size(sopt::BINARY).unwrap(),
                     self.torr
                         .throttle_down
@@ -1062,7 +1063,7 @@ impl Renderable for TorrentDetailsPanel {
                         } else {
                             t.file_size(sopt::BINARY).unwrap()
                         })
-                        .unwrap_or("global".into()),
+                        .unwrap_or_else(|| "global".into()),
                     self.torr.transferred_up.file_size(sopt::BINARY).unwrap(),
                     self.torr.transferred_down.file_size(sopt::BINARY).unwrap(),
                 ),
@@ -1077,7 +1078,7 @@ impl Renderable for TorrentDetailsPanel {
                     self.torr
                         .size
                         .map(|p| p.file_size(sopt::BINARY).unwrap())
-                        .unwrap_or("?".into()),
+                        .unwrap_or_else(|| "?".into()),
                     (self.torr.progress * 100.).round(),
                     (self.torr.availability * 100.).round(),
                     self.torr.priority,
@@ -1093,15 +1094,15 @@ impl Renderable for TorrentDetailsPanel {
                     self.torr
                         .files
                         .map(|f| format!("{}", f))
-                        .unwrap_or("?".into()),
+                        .unwrap_or_else(|| "?".into()),
                     self.torr
                         .pieces
                         .map(|p| format!("{}", p))
-                        .unwrap_or("?".into()),
+                        .unwrap_or_else(|| "?".into()),
                     self.torr
                         .piece_size
                         .map(|p| p.file_size(sopt::BINARY).unwrap())
-                        .unwrap_or("?".into()),
+                        .unwrap_or_else(|| "?".into()),
                     self.torr.peers,
                     self.torr.trackers,
                 ),

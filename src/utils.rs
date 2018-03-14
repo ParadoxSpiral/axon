@@ -167,11 +167,11 @@ enum FilterMode {
 
 impl FilterMode {
     fn cycle(&mut self) {
-        match self {
-            &mut FilterMode::Insensitive => {
+        match *self {
+            FilterMode::Insensitive => {
                 *self = FilterMode::Sensitive;
             }
-            &mut FilterMode::Sensitive => {
+            FilterMode::Sensitive => {
                 *self = FilterMode::Insensitive;
             }
         }

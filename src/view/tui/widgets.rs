@@ -300,9 +300,7 @@ where
         }
 
         // Draw active component
-        self.tabs
-            .get_mut(self.active_idx)
-            .unwrap()
+        self.tabs[self.active_idx]
             .borrow_mut()
             .render(target, width, height - 1, x_off, y_off + 1);
     }
@@ -657,7 +655,7 @@ where
                                 } else {
                                     acc.4[acc.0].push_str(&format!("{}", style::Reset));
                                 }
-                                acc.4[acc.0+1].push_str(&esc);
+                                acc.4[acc.0+1].push_str(esc);
                             }
                             acc.3.reverse();
                             acc.0 +=1;
