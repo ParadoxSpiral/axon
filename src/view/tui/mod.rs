@@ -233,8 +233,8 @@ pub struct MainPanel {
     filter: (bool, Filter),
     // lower bound of torrent selection,  current pos, _
     torrents: (usize, usize, Vec<Torrent>),
-    // tracker base, (tracker id, torrent id)
-    trackers: Vec<(Tracker, Vec<(String, String)>)>,
+    // tracker base, Vec<tracker id>
+    trackers: Vec<(Tracker, Vec<String>)>,
     trackers_displ: bool,
     details: (usize, Vec<TorrentDetailsPanel>),
     server: Server,
@@ -408,14 +408,13 @@ impl HandleInput for MainPanel {
                     self.torrents.2.get(self.torrents.1)
                 } else {
                     self.details.1.get(self.details.0).map(|d| d.inner())
-                }.and_then(|s| {
+                }.and_then(|t| {
                     self.trackers
                         .iter()
-                        .find(|&&(ref tra, ref other_tra)| {
-                            s.id == tra.torrent_id
-                                || other_tra
-                                    .binary_search_by(|&(_, ref t)| t.cmp(&s.id))
-                                    .is_ok()
+                        .find(|&&(ref base, _)| {
+                            t.tracker_urls
+                                .iter()
+                                .any(|u| &*u == base.url.host_str().unwrap())
                         })
                         .and_then(|tra| tra.0.error.clone())
                 })
@@ -568,23 +567,16 @@ impl Renderable for MainPanel {
                 Focus::Torrents | Focus::Filter => self.torrents.2.get(self.torrents.1),
                 Focus::Details => self.details.1.get(self.details.0).map(|t| t.inner()),
             };
-            let mut matched = 0;
-            for (i, &(ref base_trac, ref others)) in
-                self.trackers.iter().take(height as _).enumerate()
-            {
-                let matches = if matched < sel_tor.map(|t| t.trackers).unwrap_or(0) {
-                    matched += 1;
-                    sel_tor
-                        .as_ref()
-                        .map(|s| {
-                            *s.id == base_trac.torrent_id
-                                || others.binary_search_by(|&(_, ref t)| t.cmp(&s.id)).is_ok()
-                        })
-                        .unwrap_or(false)
-                } else {
-                    false
-                };
-                let (c_s, c_e) = match (matches, base_trac.error.is_some()) {
+            for (i, &(ref base, ref others)) in self.trackers.iter().take(height as _).enumerate() {
+                let matches = sel_tor
+                    .as_ref()
+                    .map(|t| {
+                        t.tracker_urls
+                            .iter()
+                            .any(|u| &*u == base.url.host_str().unwrap())
+                    })
+                    .unwrap_or(false);
+                let (c_s, c_e) = match (matches, base.error.is_some()) {
                     (true, true) => (
                         format!("{}{}", color::Fg(color::Cyan), color::Bg(color::Red)),
                         format!("{}{}", color::Fg(color::Reset), color::Bg(color::Reset)),
@@ -605,11 +597,7 @@ impl Renderable for MainPanel {
                         "{}{} {}{}",
                         c_s,
                         others.len() + 1,
-                        base_trac
-                            .url
-                            .as_ref()
-                            .map(|u| u.host_str().unwrap())
-                            .unwrap_or_else(|| "?.?"),
+                        base.url.host_str().unwrap(),
                         c_e,
                     ),
                 ).render(target, width, 1, x, y + i as u16);
@@ -801,15 +789,14 @@ impl HandleRpc for MainPanel {
                     {
                         let (ref mut base, ref mut others) = self.trackers[idx];
 
-                        others.retain(|&(ref tra_id, _)| !ids.contains(tra_id));
+                        others.retain(|id| !ids.contains(&id));
 
                         if ids.contains(&base.id) {
                             if others.is_empty() {
                                 rm = true;
                             } else {
                                 let last = others.pop().unwrap();
-                                base.id = last.0;
-                                base.torrent_id = last.1;
+                                base.id = last;
                                 // TODO: Once Vec of errors comes, don't forget to handle
                             }
                         }
@@ -873,10 +860,9 @@ impl HandleRpc for MainPanel {
                                 {
                                     match t.url.cmp(&base.url) {
                                         Ordering::Equal => {
-                                            let idx = others
-                                                .binary_search_by_key(&&t.id, |&(_, ref id)| id)
-                                                .unwrap_or_else(|e| e);
-                                            others.insert(idx, (t.id, t.torrent_id));
+                                            let idx =
+                                                others.binary_search(&t.id).unwrap_or_else(|e| e);
+                                            others.insert(idx, t.id);
                                             continue 'UPDATES;
                                         }
                                         Ordering::Less => {
@@ -942,9 +928,7 @@ impl HandleRpc for MainPanel {
                             // TODO: Hold a Vec of all of the trackers error, to support showing
                             // all of them, can a tracker have multiple errors?
                             for &mut (ref mut base, ref others) in &mut self.trackers {
-                                if id == base.id
-                                    || others.binary_search_by_key(&&id, |&(_, ref id)| id).is_ok()
-                                {
+                                if id == base.id || others.binary_search(&id).is_ok() {
                                     base.last_report = last_report;
                                     base.error = error;
                                     break;
