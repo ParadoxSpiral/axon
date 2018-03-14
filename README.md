@@ -23,6 +23,9 @@ Filter input:
 - `^f` closes
 - `^s` cycles filtering mode (case sensitive, case insentive)
 
+Filter syntax:
+`t:host_str s(ize)[<>]n (MB) s(tatus):[[i(dle)][s(eeding)][l(eeching)][e(rror)][p(aused)][(pe)n(ding)][h(ashing)][m(agnet)]] p(rogress)[:<>]n (0-100)`. Every word starting with a reserved `[name][sign][content]` refines the specific criteria, take care not to accidentally include them in the free text! Any other word is added to the name criteria, it the order of occurence.
+
 Torrent details:
 - `q` closes the current details panel
 

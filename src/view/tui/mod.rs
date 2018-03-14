@@ -30,8 +30,9 @@ use std::cmp::Ordering;
 use std::io::Write;
 
 use rpc::RpcContext;
-use utils::{align, Filter};
+use utils::align;
 use utils::align::x::Align;
+use utils::filter::Filter;
 
 pub trait Component: Renderable + HandleInput + HandleRpc {}
 
@@ -517,40 +518,68 @@ impl Renderable for MainPanel {
         }
 
         let draw_torrents = |target: &mut _, width, height, x, y| {
-            for (i, t) in self.torrents
-                    .2
-                    .iter()
-                    .skip(self.torrents.0)
-                    .take(height as _)
-                    .enumerate() {
-                let (c_s, c_e) = match self.focus {
-                    Focus::Torrents
-                        if i + self.torrents.0 == self.torrents.1 && t.error.is_some() =>
-                    {
-                        (
-                            format!("{}{}", color::Fg(color::Cyan), color::Bg(color::Red)),
-                            format!("{}{}", color::Fg(color::Reset), color::Bg(color::Reset)),
-                        )
-                    }
-                    Focus::Torrents if i + self.torrents.0 == self.torrents.1 => (
-                        format!("{}", color::Fg(color::Cyan)),
-                        format!("{}", color::Fg(color::Reset)),
-                    ),
-                    _ if t.error.is_some() => (
-                        format!("{}", color::Fg(color::Red)),
-                        format!("{}", color::Fg(color::Reset)),
-                    ),
-                    _ => ("".into(), "".into()),
+            // FIXME: NLL
+            {
+                let mut iteration = |i, t: &Torrent| {
+                    let (c_s, c_e) = match self.focus {
+                        Focus::Torrents
+                            if i + self.torrents.0 == self.torrents.1 && t.error.is_some() =>
+                        {
+                            (
+                                format!("{}{}", color::Fg(color::Cyan), color::Bg(color::Red)),
+                                format!("{}{}", color::Fg(color::Reset), color::Bg(color::Reset)),
+                            )
+                        }
+                        Focus::Torrents if i + self.torrents.0 == self.torrents.1 => (
+                            format!("{}", color::Fg(color::Cyan)),
+                            format!("{}", color::Fg(color::Reset)),
+                        ),
+                        _ if t.error.is_some() => (
+                            format!("{}", color::Fg(color::Red)),
+                            format!("{}", color::Fg(color::Reset)),
+                        ),
+                        _ => ("".into(), "".into()),
+                    };
+                    widgets::Text::<_, align::x::Left, align::y::Top>::new(
+                        true,
+                        format!(
+                            "{}{}{}",
+                            c_s,
+                            &**t.name.as_ref().unwrap_or_else(|| &t.path),
+                            c_e
+                        ),
+                    ).render(target, width, 1, x, y + i as u16);
                 };
-                widgets::Text::<_, align::x::Left, align::y::Top>::new(
-                    true,
-                    format!(
-                        "{}{}{}",
-                        c_s,
-                        &**t.name.as_ref().unwrap_or_else(|| &t.path),
-                        c_e
-                    ),
-                ).render(target, width, 1, x, y + i as u16);
+
+                // Some trackers might be filtered out, don't show torrents associated with them
+                if self.filter.0 && self.filter.1.inner().contains("t:") {
+                    for (i, w) in self.torrents
+                        .2
+                        .iter()
+                        .skip(self.torrents.0)
+                        .filter(|t| {
+                            self.trackers.iter().any(|&(ref base, _)| {
+                                t.tracker_urls
+                                    .iter()
+                                    .any(|u| &*u == base.url.host_str().unwrap())
+                            })
+                        })
+                        .take(height as _)
+                        .enumerate()
+                    {
+                        iteration(i, w);
+                    }
+                } else {
+                    for (i, w) in self.torrents
+                        .2
+                        .iter()
+                        .skip(self.torrents.0)
+                        .take(height as _)
+                        .enumerate()
+                    {
+                        iteration(i, w);
+                    }
+                }
             }
             if self.filter.0 {
                 widgets::Text::<_, align::x::Left, align::y::Top>::new(
