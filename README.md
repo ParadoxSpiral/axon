@@ -6,7 +6,7 @@ The synapse TUI client
 Note: Currently termion does not respect terminfo and uses ANSI color codes ([#106](https://github.com/ticki/termion/issues/106)).
 
 ## Keybindings
-- vim style movement, with uppercase letters switching panel focus
+- `hjkl` movement, `HJKL` switch focus
 - `^q` disconnects from the current server, or closes axon when in the login panel
 - `E` display errors of the currently selected torrent's trackers
 - `e` display the error of the currently selected torrent

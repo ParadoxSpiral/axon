@@ -17,8 +17,8 @@
 
 pub mod align;
 pub mod filter;
+pub mod fmt;
 
-use chrono::{DateTime, Local, Utc};
 use unicode_segmentation::UnicodeSegmentation;
 use unicode_width::UnicodeWidthStr;
 
@@ -45,31 +45,4 @@ pub fn count_without_styling(l: &str) -> u16 {
     }
 
     count as u16
-}
-
-pub fn date_diff_now(date: DateTime<Utc>) -> String {
-    let dur = Local::now().signed_duration_since(date);
-    let w = dur.num_weeks();
-    let d = dur.num_days() - dur.num_weeks() * 7;
-    let h = dur.num_hours() - dur.num_days() * 24;
-    let m = dur.num_minutes() - dur.num_hours() * 60;
-    let s = dur.num_seconds() - dur.num_minutes() * 60;
-    let mut res = String::with_capacity(
-        8 + if w == 0 {
-            0
-        } else {
-            2 + (w as f32).log10().trunc() as usize
-        } + if d == 0 { 0 } else { 2 },
-    );
-    if w > 0 {
-        if d > 0 {
-            res += &*format!("{}w", w);
-        } else {
-            res += &*format!("{}w ", w);
-        }
-    }
-    if d > 0 {
-        res += &*format!("{}d ", d);
-    }
-    res + &*format!("{:0>2}:{:0>2}:{:0>2}", h, m, s)
 }

@@ -15,7 +15,6 @@
 
 pub mod widgets;
 
-use humansize::{file_size_opts as sopt, FileSize};
 use natord;
 use synapse_rpc::message::{CMessage, SMessage};
 use synapse_rpc::resource::{Resource, ResourceKind, SResourceUpdate, Server, Torrent, Tracker};
@@ -33,6 +32,7 @@ use rpc::RpcContext;
 use utils::align;
 use utils::align::x::Align;
 use utils::filter::Filter;
+use utils::fmt::{self, FormatSize};
 
 pub trait Component: Renderable + HandleInput + HandleRpc {}
 
@@ -625,24 +625,24 @@ impl Renderable for MainPanel {
                     "Server: {} {}, {}   {}[{}]↑ {}[{}]↓   \
                      Session: {:.2}, {}↑ {}↓   Lifetime: {:.2}, {}↑ {}↓",
                     self.server_version,
-                    ::utils::date_diff_now(self.server.started),
-                    self.server.free_space.file_size(sopt::BINARY).unwrap(),
-                    self.server.rate_up.file_size(sopt::BINARY).unwrap(),
+                    fmt::date_diff_now(self.server.started),
+                    self.server.free_space.fmt_size(),
+                    self.server.rate_up.fmt_size(),
                     self.server
                         .throttle_up
                         .map(|t| if t == -1 {
                             "∞".into()
                         } else {
-                            t.file_size(sopt::BINARY).unwrap()
+                            t.fmt_size()
                         })
                         .unwrap_or_else(|| "∞".into()),
-                    self.server.rate_down.file_size(sopt::BINARY).unwrap(),
+                    self.server.rate_down.fmt_size(),
                     self.server
                         .throttle_down
                         .map(|t| if t == -1 {
                             "∞".into()
                         } else {
-                            t.file_size(sopt::BINARY).unwrap()
+                            t.fmt_size()
                         })
                         .unwrap_or_else(|| "∞".into()),
                     if self.server.ses_transferred_down == 0 {
@@ -651,24 +651,15 @@ impl Renderable for MainPanel {
                         self.server.ses_transferred_up as f32
                             / self.server.ses_transferred_down as f32
                     },
-                    self.server
-                        .ses_transferred_up
-                        .file_size(sopt::BINARY)
-                        .unwrap(),
-                    self.server
-                        .ses_transferred_down
-                        .file_size(sopt::BINARY)
-                        .unwrap(),
+                    self.server.ses_transferred_up.fmt_size(),
+                    self.server.ses_transferred_down.fmt_size(),
                     if self.server.transferred_down == 0 {
                         1.
                     } else {
                         self.server.transferred_up as f32 / self.server.transferred_down as f32
                     },
-                    self.server.transferred_up.file_size(sopt::BINARY).unwrap(),
-                    self.server
-                        .transferred_down
-                        .file_size(sopt::BINARY)
-                        .unwrap(),
+                    self.server.transferred_up.fmt_size(),
+                    self.server.transferred_down.fmt_size(),
                 ),
             ).render(target, width, height, x, y);
         };
@@ -1026,8 +1017,8 @@ impl Renderable for TorrentDetailsPanel {
                     } else {
                         "Unordered"
                     },
-                    ::utils::date_diff_now(self.torr.created),
-                    ::utils::date_diff_now(self.torr.modified),
+                    fmt::date_diff_now(self.torr.created),
+                    fmt::date_diff_now(self.torr.modified),
                 ),
             ).render(target, width, 1, x_off, y_off);
         }
@@ -1037,26 +1028,26 @@ impl Renderable for TorrentDetailsPanel {
                 true,
                 format!(
                     "Rates: {}[{}]↑ {}[{}]↓    Lifetime: {}↑ {}↓",
-                    self.torr.rate_up.file_size(sopt::BINARY).unwrap(),
+                    self.torr.rate_up.fmt_size(),
                     self.torr
                         .throttle_up
                         .map(|t| if t == -1 {
                             "∞".into()
                         } else {
-                            t.file_size(sopt::BINARY).unwrap()
+                            t.fmt_size()
                         })
                         .unwrap_or_else(|| "global".into()),
-                    self.torr.rate_down.file_size(sopt::BINARY).unwrap(),
+                    self.torr.rate_down.fmt_size(),
                     self.torr
                         .throttle_down
                         .map(|t| if t == -1 {
                             "∞".into()
                         } else {
-                            t.file_size(sopt::BINARY).unwrap()
+                            t.fmt_size()
                         })
                         .unwrap_or_else(|| "global".into()),
-                    self.torr.transferred_up.file_size(sopt::BINARY).unwrap(),
-                    self.torr.transferred_down.file_size(sopt::BINARY).unwrap(),
+                    self.torr.transferred_up.fmt_size(),
+                    self.torr.transferred_down.fmt_size(),
                 ),
             ).render(target, width, 1, x_off, y_off + 1);
         }
@@ -1068,7 +1059,7 @@ impl Renderable for TorrentDetailsPanel {
                     "Size: {}    Progress: {}%    Availability: {}%    Priority: {}",
                     self.torr
                         .size
-                        .map(|p| p.file_size(sopt::BINARY).unwrap())
+                        .map(|p| p.fmt_size())
                         .unwrap_or_else(|| "?".into()),
                     (self.torr.progress * 100.).round(),
                     (self.torr.availability * 100.).round(),
@@ -1092,7 +1083,7 @@ impl Renderable for TorrentDetailsPanel {
                         .unwrap_or_else(|| "?".into()),
                     self.torr
                         .piece_size
-                        .map(|p| p.file_size(sopt::BINARY).unwrap())
+                        .map(|p| p.fmt_size())
                         .unwrap_or_else(|| "?".into()),
                     self.torr.peers,
                     self.torr.trackers,
