@@ -912,6 +912,33 @@ where
     }
 }
 
+pub struct RenderStateFn<F, T>
+where
+    F: Fn(&mut Vec<u8>, u16, u16, u16, u16, &mut T),
+{
+    ct: F,
+    state: T,
+}
+impl<F, T> RenderStateFn<F, T>
+where
+    F: Fn(&mut Vec<u8>, u16, u16, u16, u16, &mut T),
+{
+    pub fn new(fun: F, state: T) -> RenderStateFn<F, T> {
+        RenderStateFn { ct: fun, state }
+    }
+}
+impl<F, T> Renderable for RenderStateFn<F, T>
+where
+    F: Fn(&mut Vec<u8>, u16, u16, u16, u16, &mut T),
+{
+    fn name(&self) -> String {
+        "Unnamed render fun".into()
+    }
+    fn render(&mut self, target: &mut Vec<u8>, width: u16, height: u16, x_off: u16, y_off: u16) {
+        (self.ct)(target, width, height, x_off, y_off, &mut self.state);
+    }
+}
+
 pub struct CloseOnInput<T>
 where
     T: Renderable + HandleRpc,

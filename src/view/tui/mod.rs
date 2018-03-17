@@ -234,8 +234,8 @@ pub struct MainPanel {
     filter: (bool, Filter),
     // lower bound of torrent selection,  current pos, _
     torrents: (usize, usize, Vec<Torrent>),
-    // tracker base, Vec<tracker id>
-    trackers: Vec<(Tracker, Vec<String>)>,
+    // tracker base, Vec<(tracker id, torrent_id, optional error)>
+    trackers: Vec<(Tracker, Vec<(String, String, Option<String>)>)>,
     trackers_displ: bool,
     details: (usize, Vec<TorrentDetailsPanel>),
     server: Server,
@@ -404,65 +404,74 @@ impl HandleInput for MainPanel {
                 self.focus = Focus::Details;
             }
 
-            (Key::Char('E'), Focus::Torrents) | (Key::Char('E'), Focus::Details) => {
-                return if self.focus == Focus::Torrents {
-                    self.torrents.2.get(self.torrents.1)
-                } else {
-                    self.details.1.get(self.details.0).map(|d| d.inner())
-                }.and_then(|t| {
-                    self.trackers
-                        .iter()
-                        .find(|&&(ref base, _)| {
-                            t.tracker_urls
-                                .iter()
-                                .any(|u| &*u == base.url.host_str().unwrap())
-                        })
-                        .and_then(|tra| tra.0.error.clone())
-                })
-                    .and_then(|e| {
-                        let l = e.len();
-                        Some(InputResult::ReplaceWith(
-                            Box::new(widgets::OwnedOverlay::new(
-                                widgets::CloseOnInput::new(widgets::IgnoreRpc::new(
-                                    widgets::Text::<_, align::x::Center, align::y::Top>::new(
-                                        true,
-                                        e,
-                                    ),
-                                )),
-                                // FIXME: There has to be a better way than cloning self
-                                Box::new(self.clone()),
-                                (l as u16 + 2, 1),
-                                color::Red,
-                                "Tracker".to_owned(),
-                            )) as Box<Component>,
-                        ))
-                    })
-                    .unwrap_or(InputResult::Key(Key::Char('E')));
-            }
-
             (Key::Char('e'), Focus::Torrents) | (Key::Char('e'), Focus::Details) => {
                 return if self.focus == Focus::Torrents {
                     self.torrents.2.get(self.torrents.1)
                 } else {
                     self.details.1.get(self.details.0).map(|d| d.inner())
-                }.and_then(|t| t.error.as_ref())
-                    .and_then(|e| {
-                        Some(InputResult::ReplaceWith(
-                            Box::new(widgets::OwnedOverlay::new(
-                                widgets::CloseOnInput::new(widgets::IgnoreRpc::new(
-                                    widgets::Text::<_, align::x::Center, align::y::Top>::new(
-                                        true,
-                                        e.clone(),
-                                    ),
-                                )),
-                                // FIXME: There has to be a better way than cloning self
-                                Box::new(self.clone()),
-                                (e.len() as u16 + 2, 1),
-                                color::Red,
-                                "Torrent".to_owned(),
-                            )) as Box<Component>,
-                        ))
-                    })
+                }.and_then(|t| {
+                    let mut tree = Vec::new();
+                    let mut len = "Errors".len() as u16;
+                    t.error.as_ref().map(|e| {
+                        tree.push(e.clone());
+                        len = cmp::max(len, e.len() as u16);
+                    });
+                    for &(ref base, ref others) in self.trackers.iter().filter(|tra| {
+                        t.tracker_urls
+                            .iter()
+                            .any(|tu| &*tu == tra.0.url.host_str().unwrap())
+                    }) {
+                        let mut other_errs = others
+                            .iter()
+                            .filter(|&&(_, ref id, ref err)| t.id == *id && err.is_some())
+                            .map(|&(_, _, ref err)| err.as_ref().unwrap().clone())
+                            .peekable();
+                        if base.error.is_some() && base.torrent_id == t.id {
+                            let s = format!(
+                                "{}: {}",
+                                base.url.host_str().unwrap(),
+                                base.error.as_ref().unwrap().clone(),
+                            );
+                            len = cmp::max(len, s.len() as u16);
+                            tree.push(s);
+                        } else if other_errs.peek().is_some() {
+                            let s = format!(
+                                "{}: {}",
+                                base.url.host_str().unwrap(),
+                                other_errs.next().unwrap()
+                            );
+                            len = cmp::max(len, s.len() as u16);
+                            tree.push(s);
+                        }
+                        for e in other_errs {
+                            let s = format!(" {}", e);
+                            len = cmp::max(len, s.len() as u16);
+                            tree.push(s);
+                        }
+                    }
+                    if tree.is_empty() {
+                        return None;
+                    }
+
+                    let draw = |target: &mut _, width, _, x, y, state: &mut Vec<String>| {
+                        for (i, e) in state.iter().enumerate() {
+                            widgets::Text::<_, align::x::Left, align::y::Top>::new(true, &**e)
+                                .render(target, width, 1, x, y + i as u16);
+                        }
+                    };
+
+                    Some(InputResult::ReplaceWith(
+                        Box::new(widgets::OwnedOverlay::new(
+                            widgets::CloseOnInput::new(widgets::IgnoreRpc::new(
+                                widgets::RenderStateFn::new(draw, tree),
+                            )),
+                            Box::new(self.clone()),
+                            (len, 1),
+                            color::Red,
+                            "Errors".to_owned(),
+                        )) as Box<Component>,
+                    ))
+                })
                     .unwrap_or(InputResult::Key(Key::Char('e')));
             }
 
@@ -663,7 +672,12 @@ impl Renderable for MainPanel {
                             .any(|u| &*u == base.url.host_str().unwrap())
                     })
                     .unwrap_or(false);
-                let (c_s, c_e) = match (matches, base.error.is_some()) {
+                let (c_s, c_e) = match (
+                    matches,
+                    base.error.is_some() || others.iter().any(|&(_, ref id, ref e)| {
+                        sel_tor.map(|t| t.id == *id).unwrap_or(false) && e.is_some()
+                    }),
+                ) {
                     (true, true) => (
                         format!("{}{}", color::Fg(color::Cyan), color::Bg(color::Red)),
                         format!("{}{}", color::Fg(color::Reset), color::Bg(color::Reset)),
@@ -867,15 +881,16 @@ impl HandleRpc for MainPanel {
                     {
                         let (ref mut base, ref mut others) = self.trackers[idx];
 
-                        others.retain(|id| !ids.contains(&id));
+                        others.retain(|&(ref id, _, _)| !ids.contains(&id));
 
                         if ids.contains(&base.id) {
                             if others.is_empty() {
                                 rm = true;
                             } else {
                                 let last = others.pop().unwrap();
-                                base.id = last;
-                                // TODO: Once Vec of errors comes, don't forget to handle
+                                base.id = last.0;
+                                base.torrent_id = last.1;
+                                base.error = last.2;
                             }
                         }
                     }
@@ -938,9 +953,10 @@ impl HandleRpc for MainPanel {
                                 {
                                     match t.url.cmp(&base.url) {
                                         Ordering::Equal => {
-                                            let idx =
-                                                others.binary_search(&t.id).unwrap_or_else(|e| e);
-                                            others.insert(idx, t.id);
+                                            let idx = others
+                                                .binary_search_by_key(&&t.id, |&(ref id, _, _)| id)
+                                                .unwrap_or_else(|e| e);
+                                            others.insert(idx, (t.id, t.torrent_id, t.error));
                                             continue 'UPDATES;
                                         }
                                         Ordering::Less => {
@@ -1002,17 +1018,19 @@ impl HandleRpc for MainPanel {
                             last_report,
                             error,
                             ..
-                        } => {
-                            // TODO: Hold a Vec of all of the trackers error, to support showing
-                            // all of them, can a tracker have multiple errors?
-                            for &mut (ref mut base, ref others) in &mut self.trackers {
-                                if id == base.id || others.binary_search(&id).is_ok() {
-                                    base.last_report = last_report;
-                                    base.error = error;
-                                    break;
-                                }
+                        } => for &mut (ref mut base, ref mut others) in &mut self.trackers {
+                            if id == base.id {
+                                base.last_report = last_report;
+                                base.error = error;
+                                break;
+                            } else if let Ok(pos) =
+                                others.binary_search_by_key(&&id, |&(ref id, _, _)| id)
+                            {
+                                base.last_report = last_report;
+                                others[pos].2 = error;
+                                break;
                             }
-                        }
+                        },
                         // Torrent updates
                         SResourceUpdate::Throttle {
                             kind: ResourceKind::Torrent,

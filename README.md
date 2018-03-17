@@ -8,8 +8,7 @@ Note: Currently termion does not respect terminfo and uses ANSI color codes ([#1
 ## Keybindings
 - `hjkl` movement, `HJKL` switch focus
 - `^q` disconnects from the current server, or closes axon when in the login panel
-- `E` display errors of the currently selected torrent's trackers
-- `e` display the error of the currently selected torrent
+- `e` display errors of the currently selected torrent
 
 Torrent panel:
 - `^f` opens the filter input
