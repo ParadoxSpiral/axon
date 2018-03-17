@@ -49,12 +49,20 @@ pub mod x {
         }
     }
 
+    pub struct Right {}
+    impl Align for Right {
+        fn align_offset(lines: &[&str], width: u16) -> Alignment {
+            assert!(lines.len() == 1);
+            Alignment::Single(width.saturating_sub(count_without_styling(lines[0])))
+        }
+    }
+
     pub struct Center {}
     impl Align for Center {
         fn align_offset(lines: &[&str], width: u16) -> Alignment {
             let mut algns = Vec::with_capacity(lines.len());
             for l in lines {
-                algns.push((width / 2).saturating_sub((l.len() / 2) as u16));
+                algns.push((width / 2).saturating_sub((count_without_styling(l) / 2) as u16));
             }
             Alignment::Each(algns)
         }

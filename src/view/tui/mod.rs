@@ -518,6 +518,46 @@ impl Renderable for MainPanel {
         }
 
         let draw_torrents = |target: &mut _, width, height, x, y| {
+            let mut width_status = 0;
+            let mut width_throttle_up = 0;
+            let mut width_throttle_down = 0;
+            let mut width_ratio = 0;
+            for t in self.torrents
+                .2
+                .iter()
+                .skip(self.torrents.0)
+                .take(height as _)
+            {
+                width_status = cmp::max(width_status, t.status.as_str().len());
+                width_throttle_up = cmp::max(
+                    width_throttle_up,
+                    t.throttle_up
+                        .map(|t| if t == -1 { 1 } else { 10 })
+                        .unwrap_or(6),
+                );
+                width_throttle_down = cmp::max(
+                    width_throttle_down,
+                    t.throttle_down
+                        .map(|t| if t == -1 { 1 } else { 10 })
+                        .unwrap_or(6),
+                );
+                width_ratio = cmp::max(
+                    width_ratio,
+                    if t.transferred_down == 0 {
+                        4
+                    } else {
+                        3 + {
+                            let rat = t.transferred_up as f32 / t.transferred_down as f32;
+                            if rat <= 1. {
+                                1
+                            } else {
+                                (1. + rat.log10().floor()) as usize
+                            }
+                        }
+                    },
+                );
+            }
+
             for (i, t) in self.torrents
                 .2
                 .iter()
@@ -553,6 +593,51 @@ impl Renderable for MainPanel {
                         c_e
                     ),
                 ).render(target, width, 1, x, y + i as u16);
+                let left = t.name.as_ref().unwrap_or_else(|| &t.path).len() as u16;
+                widgets::Text::<_, align::x::Right, align::y::Top>::new(
+                    true,
+                    format!(
+                        "{}{:03}% {: ^w_status$} {: >10}[{: ^w_tu$}]↑ {: >10}[{: ^w_td$}]↓   \
+                         {: >w_rat$.2}  {: >10}↑  {: >10}↓{}",
+                        c_s,
+                        (t.progress * 100.).round(),
+                        t.status.as_str(),
+                        t.rate_up.fmt_size(),
+                        t.throttle_up
+                            .map(|t| if t == -1 {
+                                "∞".into()
+                            } else {
+                                t.fmt_size()
+                            })
+                            .unwrap_or_else(|| "global".into()),
+                        t.rate_down.fmt_size(),
+                        t.throttle_down
+                            .map(|t| if t == -1 {
+                                "∞".into()
+                            } else {
+                                t.fmt_size()
+                            })
+                            .unwrap_or_else(|| "global".into()),
+                        if t.transferred_down == 0 {
+                            1.
+                        } else {
+                            t.transferred_up as f32 / t.transferred_down as f32
+                        },
+                        t.transferred_up.fmt_size(),
+                        t.transferred_down.fmt_size(),
+                        c_e,
+                        w_status = width_status,
+                        w_tu = width_throttle_up,
+                        w_td = width_throttle_down,
+                        w_rat = width_ratio,
+                    ),
+                ).render(
+                    target,
+                    width.saturating_sub(1 + left),
+                    1,
+                    x + 1 + left,
+                    y + i as u16,
+                );
             }
             if self.filter.0 {
                 widgets::Text::<_, align::x::Left, align::y::Top>::new(
@@ -1027,7 +1112,7 @@ impl Renderable for TorrentDetailsPanel {
             widgets::Text::<_, align::x::Left, align::y::Top>::new(
                 true,
                 format!(
-                    "Rates: {}[{}]↑ {}[{}]↓    Lifetime: {}↑ {}↓",
+                    "Rates: {}[{}]↑ {}[{}]↓    Lifetime: {:.2} {}↑ {}↓",
                     self.torr.rate_up.fmt_size(),
                     self.torr
                         .throttle_up
@@ -1046,6 +1131,11 @@ impl Renderable for TorrentDetailsPanel {
                             t.fmt_size()
                         })
                         .unwrap_or_else(|| "global".into()),
+                    if self.torr.transferred_down == 0 {
+                        1.
+                    } else {
+                        self.torr.transferred_up as f32 / self.torr.transferred_down as f32
+                    },
                     self.torr.transferred_up.fmt_size(),
                     self.torr.transferred_down.fmt_size(),
                 ),

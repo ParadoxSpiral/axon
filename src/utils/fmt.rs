@@ -60,7 +60,13 @@ macro_rules! impl_fmt_size {
                     idx += 1;
                 }
 
-                format!("{:06.2} {}", size, SCALE[idx])
+                // Cheat to avoid overly long alignments
+                if size >= 1000. {
+                    size = 1024. / size;
+                    idx += 1;
+                }
+
+                format!("{: >6.2} {}", size, SCALE[idx])
             }
         }
     };
