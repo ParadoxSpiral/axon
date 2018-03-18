@@ -520,8 +520,13 @@ impl Renderable for MainPanel {
     fn render(&mut self, target: &mut Vec<u8>, width: u16, height: u16, x_off: u16, y_off: u16) {
         // If the display got downsized, we possibly need to tighten the torrent selection
         let d = self.torrents.1 - self.torrents.0;
+        let sub = if self.details.1.is_empty() {
+            0
+        } else {
+            6
+        };
         // - 2 because of the server footer, -1 because of 1-0 index conversion
-        let torr_height = height.saturating_sub(3) as usize;
+        let torr_height = height.saturating_sub(3 + sub) as usize;
         if d > torr_height {
             self.torrents.1 -= d - torr_height;
         }
