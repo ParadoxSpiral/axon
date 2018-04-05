@@ -39,7 +39,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
 use std::thread;
 
-use view::View;
+use tui::View;
 
 type InnerStream = Framed<Box<Stream + Send>, MessageCodec<OwnedMessage>>;
 type SplitSocket = (SplitStream<InnerStream>, Wait<SplitSink<InnerStream>>);

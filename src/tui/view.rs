@@ -13,8 +13,6 @@
 // You should have received a copy of the GNU General Public License
 // along with Axon.  If not, see <http://www.gnu.org/licenses/>.
 
-pub mod tui;
-
 use parking_lot::{Condvar, Mutex};
 use synapse_rpc::message::SMessage;
 use termion::{self, clear, cursor};
@@ -31,7 +29,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
 use rpc::RpcContext;
-use self::tui::{widgets, Component, HandleInput, HandleRpc, InputResult, LoginPanel, Renderable};
+use super::{widgets, panels, Component, HandleInput, HandleRpc, InputResult, Renderable};
 use utils::align;
 
 pub struct View {
@@ -53,7 +51,7 @@ impl View {
         write!(rb, "{}", cursor::Hide).unwrap();
         View {
             content: Mutex::new(DisplayState::Component(TopLevelComponent::Login(
-                LoginPanel::new(),
+                panels::LoginPanel::new(),
             ))),
             render_buf: Mutex::new(rb),
             stdout: RefCell::new(io::stdout().into_raw_mode().unwrap()),
@@ -144,7 +142,7 @@ impl View {
             data.map(|d| format!("{}", d.reason))
                 .unwrap_or_else(|| "Disconnected".to_owned()),
             Some("Connection closed".to_owned()),
-            TopLevelComponent::Login(LoginPanel::new()),
+            TopLevelComponent::Login(panels::LoginPanel::new()),
         );
     }
 
@@ -241,7 +239,7 @@ impl DisplayState {
 }
 
 enum TopLevelComponent {
-    Login(LoginPanel),
+    Login(panels::LoginPanel),
     Other(Box<Component>),
 }
 

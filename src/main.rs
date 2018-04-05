@@ -42,14 +42,14 @@ extern crate slog_async;
 extern crate slog_term;
 
 mod rpc;
+mod tui;
 pub mod utils;
-mod view;
 
 use termion::input::TermRead;
 
 use rpc::RpcContext;
-use view::View;
-use view::tui::InputResult;
+use tui::View;
+use tui::InputResult;
 
 #[cfg(feature = "dbg")]
 lazy_static! {

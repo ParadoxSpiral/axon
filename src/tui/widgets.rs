@@ -771,7 +771,8 @@ impl Input {
         }
     }
     pub fn push(&mut self, c: char) {
-        self.content.insert(self.pos - 1, c);
+        let offset = self.content.graphemes(true).take(self.pos - 1).collect::<String>().chars().count();
+        self.content.insert(offset, c);
         self.pos += 1;
     }
     pub fn backspace(&mut self) {
