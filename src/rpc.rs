@@ -64,9 +64,8 @@ enum InitRes {
 }
 
 thread_local!(
+    static SOCKET: RefCell<Option<SplitSocket>> = RefCell::new(None);
     // For some reason the dtors fail to function and panic, so we let the OS do the cleanup
-    static SOCKET: ManuallyDrop<RefCell<Option<SplitSocket>>>
-                = ManuallyDrop::new(RefCell::new(None));
     static CORE: ManuallyDrop<RefCell<Core>>
                 = ManuallyDrop::new(RefCell::new(Core::new().unwrap()));
 );
