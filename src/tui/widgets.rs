@@ -771,7 +771,12 @@ impl Input {
         }
     }
     pub fn push(&mut self, c: char) {
-        let offset = self.content.graphemes(true).take(self.pos - 1).collect::<String>().chars().count();
+        let offset = self.content
+                         .graphemes(true)
+                         .take(self.pos - 1)
+                         .collect::<String>()
+                         .bytes()
+                         .count();
         self.content.insert(offset, c);
         self.pos += 1;
     }
