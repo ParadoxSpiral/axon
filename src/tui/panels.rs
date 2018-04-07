@@ -30,7 +30,7 @@ use rpc::RpcContext;
 use super::{widgets, Component, Renderable, HandleInput, HandleRpc, InputResult};
 use utils::align;
 use utils::align::x::Align;
-use utils::filter::Filter;
+use utils::filter::{self, Filter};
 use utils::fmt::{self, FormatSize};
 
 #[derive(Clone)]
@@ -206,7 +206,7 @@ enum Focus {
 #[derive(Clone)]
 pub struct MainPanel {
     focus: Focus,
-    filter: (bool, Filter),
+    filter: Option<Filter>,
     // lower bound of torrent selection,  current pos, _
     torrents: (usize, usize, Vec<Torrent>),
     // tracker base, Vec<(tracker id, torrent_id, optional error)>
@@ -221,7 +221,7 @@ impl MainPanel {
     fn new(ctx: &RpcContext) -> MainPanel {
         let mut p = MainPanel {
             focus: Focus::Torrents,
-            filter: (false, Filter::new(ctx.next_serial())),
+            filter: None,
             torrents: (0, 0, Vec::new()),
             trackers: Vec::new(),
             trackers_displ: false,
@@ -237,7 +237,7 @@ impl MainPanel {
 impl Component for MainPanel {}
 
 impl HandleInput for MainPanel {
-    fn input(&mut self, ctx: &RpcContext, k: Key, _: u16, height: u16) -> InputResult {
+    fn input(&mut self, ctx: &RpcContext, k: Key, width: u16, height: u16) -> InputResult {
         // - 2 because of the server footer
         let torr_height = height.saturating_sub(2) as usize;
 
@@ -245,38 +245,19 @@ impl HandleInput for MainPanel {
             // Special keys
             (Key::Ctrl('f'), Focus::Filter) => {
                 self.focus = Focus::Torrents;
-                self.filter.0 = false;
-                self.filter.1.clear();
-                self.filter.1.update(ctx);
+                self.filter.as_ref().unwrap().reset(ctx);
+                self.filter = None;
             }
             (Key::Ctrl('f'), _) => {
                 self.focus = Focus::Filter;
-                self.filter.0 = true;
-            }
-
-            (Key::Ctrl('s'), Focus::Filter) => {
-                self.filter.1.cycle();
-                self.filter.1.update(ctx);
+                self.filter = Some(Filter::new());
             }
 
             (Key::Esc, Focus::Filter) => {
                 self.focus = Focus::Torrents;
             }
 
-            (Key::Backspace, Focus::Filter) => {
-                self.filter.1.backspace();
-                self.filter.1.update(ctx);
-            }
-
-            (Key::Delete, Focus::Filter) => {
-                self.filter.1.delete();
-                self.filter.1.update(ctx);
-            }
-
             // Movement Keys
-            (Key::Home, Focus::Filter) => {
-                self.filter.1.home();
-            }
             (Key::Home, Focus::Torrents) => {
                 self.torrents.0 = 0;
                 self.torrents.1 = 0;
@@ -285,9 +266,6 @@ impl HandleInput for MainPanel {
                 self.details.0 = 0;
             }
 
-            (Key::End, Focus::Filter) => {
-                self.filter.1.end();
-            }
             (Key::End, Focus::Torrents) => {
                 let l = self.torrents.2.len();
                 self.torrents.0 = l.saturating_sub(torr_height);
@@ -344,14 +322,12 @@ impl HandleInput for MainPanel {
                 self.torrents.1 += 1;
             }
 
-            (Key::Left, Focus::Filter) => self.filter.1.cursor_left(),
             (Key::Left, Focus::Details) | (Key::Char('h'), Focus::Details)
                 if self.details.0 > 0 =>
             {
                 self.details.0 -= 1;
             }
 
-            (Key::Right, Focus::Filter) => self.filter.1.cursor_right(),
             (Key::Right, Focus::Details) | (Key::Char('l'), Focus::Details)
                 if self.details.0 + 1 != self.details.1.len() =>
             {
@@ -359,7 +335,7 @@ impl HandleInput for MainPanel {
             }
 
             // Key::Char
-            (Key::Char('\n'), Focus::Torrents) if self.filter.0 => {
+            (Key::Char('\n'), Focus::Torrents) if self.filter.is_some() => {
                 self.focus = Focus::Filter;
             }
 
@@ -474,9 +450,8 @@ impl HandleInput for MainPanel {
             }
 
             // Catch all filter input
-            (Key::Char(c), Focus::Filter) => {
-                self.filter.1.push(c);
-                self.filter.1.update(ctx);
+            (k, Focus::Filter) => {
+                return self.filter.as_mut().unwrap().input(ctx, k, width, height);
             }
 
             // Bounce unused
@@ -628,12 +603,12 @@ impl Renderable for MainPanel {
                     y + i as u16,
                 );
             }
-            if self.filter.0 {
+            if let Some(ref filter) = self.filter {
                 widgets::Text::<_, align::x::Left, align::y::Top>::new(
                     true,
                     match self.focus {
-                        Focus::Filter => self.filter.1.format(true),
-                        _ => self.filter.1.format(false),
+                        Focus::Filter => filter.format(true),
+                        _ => filter.format(false),
                     },
                 ).render(target, width, 1, x, height);
             }
@@ -1060,12 +1035,14 @@ impl HandleRpc for MainPanel {
             kind: ResourceKind::Tracker,
             criteria: Vec::new(),
         });
-        self.filter.1.init(ctx);
+        unsafe {
+            filter::init(ctx);
+        }
     }
 }
 
 #[derive(Clone)]
-pub struct TorrentDetailsPanel {
+struct TorrentDetailsPanel {
     torr: Torrent,
 }
 impl TorrentDetailsPanel {

@@ -19,9 +19,23 @@ use synapse_rpc::criterion::{Criterion, Operation, Value};
 use synapse_rpc::message::CMessage;
 use synapse_rpc::resource::ResourceKind;
 use termion::color;
+use termion::event::Key;
 
 use rpc::RpcContext;
-use view::tui::widgets;
+use tui::{widgets, HandleInput, InputResult};
+
+static mut SERIAL: u64 = 0;
+
+// This shall only be called once per server lifetime at initialization
+pub unsafe fn init(ctx: &RpcContext) {
+    SERIAL = ctx.next_serial();
+
+    ctx.send(CMessage::FilterSubscribe {
+        serial: SERIAL,
+        kind: ResourceKind::Torrent,
+        criteria: Vec::new(),
+    });
+}
 
 #[derive(Clone)]
 enum FilterMode {
@@ -46,7 +60,41 @@ impl FilterMode {
 pub struct Filter {
     mode: FilterMode,
     input: widgets::Input,
-    serial: u64,
+}
+
+impl HandleInput for Filter {
+    fn input(&mut self, ctx: &RpcContext, k: Key, _: u16, _: u16) -> InputResult {
+        match k {
+            Key::Ctrl('s') => {
+                self.mode.cycle();
+                self.update(ctx);
+            }
+            Key::Backspace => {
+                self.input.backspace();
+                self.update(ctx);
+            }
+            Key::Delete => {
+                self.input.delete();
+                self.update(ctx);
+            }
+            Key::Home => {
+                self.input.home();
+            }
+            Key::End => {
+                self.input.end();
+            }
+            Key::Left => self.input.cursor_left(),
+            Key::Right => self.input.cursor_right(),
+            Key::Char(c) => {
+                self.input.push(c);
+                self.update(ctx);
+            }
+            _ => {
+                return InputResult::Key(k);
+            }
+        }
+        InputResult::Rerender
+    }
 }
 
 macro_rules! push_name {
@@ -59,24 +107,23 @@ macro_rules! push_name {
 }
 
 impl Filter {
-    pub fn new(serial: u64) -> Filter {
+    pub fn new() -> Filter {
         Filter {
             mode: FilterMode::Insensitive,
-            input: widgets::Input::from("", 1),
-            serial,
+            input: widgets::Input::from("".into(), 1),
         }
     }
 
-    pub fn init(&self, ctx: &RpcContext) {
+    pub fn reset(&self, ctx: &RpcContext) {
         ctx.send(CMessage::FilterSubscribe {
-            serial: self.serial,
+            serial: unsafe { SERIAL },
             kind: ResourceKind::Torrent,
             criteria: Vec::new(),
         });
     }
 
-    pub fn update(&self, ctx: &RpcContext) {
-        let mut criteria_torrent = Vec::with_capacity(1);
+    fn update(&self, ctx: &RpcContext) {
+        let mut criteria = Vec::with_capacity(1);
         let mut name = String::new();
 
         for mut w in self.input.inner().split_whitespace() {
@@ -92,14 +139,14 @@ impl Filter {
 
             match &w[..1] {
                 "t" => if &w[1..2] == ":" {
-                    criteria_torrent.push(Criterion {
+                    criteria.push(Criterion {
                         field: "tracker_urls".into(),
                         op: Operation::Has,
                         value: Value::S(w[2..].to_owned()),
                     });
                 },
                 "p" => if let Ok(n) = w[2..].parse::<f32>() {
-                    criteria_torrent.push(Criterion {
+                    criteria.push(Criterion {
                         field: "progress".into(),
                         op: match &w[1..2] {
                             ":" => Operation::Eq,
@@ -116,7 +163,7 @@ impl Filter {
                     // TODO: Insert red BG
                 },
                 "s" => if let Ok(n) = w[2..].parse::<f32>() {
-                    criteria_torrent.push(Criterion {
+                    criteria.push(Criterion {
                         field: "size".into(),
                         op: match &w[1..2] {
                             "<" => Operation::LTE,
@@ -129,7 +176,7 @@ impl Filter {
                         value: Value::F(n * 1024. * 1024.),
                     });
                 } else {
-                    criteria_torrent.push(Criterion {
+                    criteria.push(Criterion {
                         field: "status".into(),
                         op: Operation::Eq,
                         value: match &w[2..3] {
@@ -155,7 +202,7 @@ impl Filter {
         }
 
         if !name.is_empty() {
-            criteria_torrent.push(Criterion {
+            criteria.push(Criterion {
                 field: "name".into(),
                 op: match self.mode {
                     FilterMode::Insensitive => Operation::ILike,
@@ -166,14 +213,10 @@ impl Filter {
         }
 
         ctx.send(CMessage::FilterSubscribe {
-            serial: self.serial,
+            serial: unsafe { SERIAL },
             kind: ResourceKind::Torrent,
-            criteria: criteria_torrent,
+            criteria,
         });
-    }
-
-    pub fn cycle(&mut self) {
-        self.mode.cycle();
     }
 
     pub fn format(&self, active: bool) -> String {
@@ -196,19 +239,5 @@ impl Filter {
             c_e,
             cnt
         )
-    }
-}
-
-impl ::std::ops::Deref for Filter {
-    type Target = widgets::Input;
-
-    fn deref(&self) -> &Self::Target {
-        &self.input
-    }
-}
-
-impl ::std::ops::DerefMut for Filter {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.input
     }
 }

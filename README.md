@@ -4,9 +4,6 @@ The synapse TUI client
 # Usage
 Note: Currently termion (the underlying TUI library) does not respect terminfo and uses ANSI color codes ([#106](https://github.com/ticki/termion/issues/106)).
 
-## Compilation dependencies
-Rust minimum version of 1.24, pkg-config, gcc or clang, openssl.
-
 ## Keybindings
 - `hjkl` movement, `HJKL` switch focus
 - `C-q` disconnects from the current server, or closes axon when in the login panel
@@ -33,6 +30,14 @@ Every word starting with a specifier `[name][sign][content]` refines the criteri
 
 Torrent details:
 - `q` closes the current details panel
+
+## Configuration
+The config file is searched for at `$XDG_CONFIG_HOME/axon/config.toml` and `~/.config/axon/config.toml`.
+For options, see `example_config.toml`.
+
+## Compilation dependencies
+Rust minimum version of 1.24, pkg-config, gcc or clang, openssl.
+
 
 # Windows
 Termion currently does not support windows, but might in the future ([#103](https://github.com/ticki/termion/issues/103)).

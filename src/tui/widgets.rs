@@ -727,15 +727,15 @@ pub struct Input {
 }
 
 impl Input {
-    pub fn from<T: Into<Option<usize>>>(str: &str, pos: T) -> Input {
+    pub fn from<T: Into<Option<usize>>>(content: String, pos: T) -> Input {
         Input {
-            content: String::from(str),
             pos: pos.into()
                 .and_then(|pos| {
                     assert!(pos > 0);
                     Some(pos)
                 })
-                .unwrap_or_else(|| str.graphemes(true).count() + 1),
+                .unwrap_or_else(|| content.graphemes(true).count() + 1),
+            content,
         }
     }
     pub fn with_capacity(n: usize) -> Input {
@@ -847,6 +847,9 @@ impl Input {
 #[derive(Clone)]
 pub struct PasswordInput(Input);
 impl PasswordInput {
+    pub fn from<T: Into<Option<usize>>>(content: String, pos: T) -> PasswordInput {
+        PasswordInput(Input::from(content, pos))
+    }
     pub fn with_capacity(n: usize) -> PasswordInput {
         PasswordInput(Input::with_capacity(n))
     }
