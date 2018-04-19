@@ -527,6 +527,7 @@ impl Renderable for MainPanel {
                     },
                 );
             }
+            let left = self.torrents.2.iter().map(|t| t.path.len()).max().unwrap_or(0) as u16;
 
             for (i, t) in self.torrents
                 .2
@@ -563,7 +564,6 @@ impl Renderable for MainPanel {
                         c_e
                     ),
                 ).render(target, width, 1, x, y + i as u16);
-                let left = t.name.as_ref().unwrap_or_else(|| &t.path).len() as u16;
                 widgets::Text::<_, align::x::Right, align::y::Top>::new(
                     true,
                     format!(
