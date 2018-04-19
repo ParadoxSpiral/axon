@@ -1,0 +1,6 @@
+# Optional. Default server URI
+server = "ws://127.0.0.1:8412"
+# Optional. Default server pasword
+pass = "hackme"
+# Immediately connect to the server on startup, only possible if server URI specified
+autoconnect = false

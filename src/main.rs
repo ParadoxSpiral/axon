@@ -18,21 +18,24 @@
 extern crate chrono;
 extern crate crossbeam;
 extern crate futures;
+#[macro_use]
+extern crate lazy_static;
 extern crate natord;
 extern crate parking_lot;
 extern crate serde;
+#[macro_use]
+extern crate serde_derive;
 extern crate serde_json;
+extern crate shellexpand;
 extern crate synapse_rpc;
 extern crate termion;
 extern crate tokio_core as tokio;
+extern crate toml;
 extern crate unicode_segmentation;
 extern crate unicode_width;
 extern crate url;
 extern crate websocket;
 
-#[cfg(feature = "dbg")]
-#[cfg_attr(feature = "dbg", macro_use)]
-extern crate lazy_static;
 #[cfg(feature = "dbg")]
 #[cfg_attr(feature = "dbg", macro_use)]
 extern crate slog;
@@ -41,12 +44,15 @@ extern crate slog_async;
 #[cfg(feature = "dbg")]
 extern crate slog_term;
 
+pub mod config;
 mod rpc;
 mod tui;
 pub mod utils;
 
+use termion::event::Key;
 use termion::input::TermRead;
 
+use config::CONFIG;
 use rpc::RpcContext;
 use tui::View;
 use tui::InputResult;
@@ -109,6 +115,15 @@ fn main() {
     }
 
     crossbeam::scope(|scope| {
+        if CONFIG.autoconnect {
+            scope.spawn(|| {
+                print!("Autoconnecting…");
+                #[cfg(feature = "dbg")]
+                trace!(*S_VIEW, "Autoconnecting");
+                view.handle_input(&rpc, Key::Char('\n'));
+            });
+        }
+
         // View worker
         scope.spawn(|| {
             #[cfg(feature = "dbg")]

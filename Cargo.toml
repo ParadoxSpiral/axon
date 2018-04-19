@@ -7,25 +7,28 @@ authors = ["Jonathan Schleußer <paradoxspiral@riseup.net>"]
 chrono = "0.4"
 crossbeam = "0.3"
 futures = "0.1"
+lazy_static = "1"
 natord = "1"
 parking_lot = "0.5"
 synapse-rpc = "0.1.14"
 serde = "1"
+serde_derive = "1"
 serde_json = "1"
+shellexpand = "1"
 termion = "1"
 tokio-core = "0.1"
+toml = "0.4"
 websocket = "0.20"
 unicode-segmentation = "1"
 unicode-width = "0.1"
 url = "1"
 
-lazy_static = { version = "1", optional = true }
 slog = { version = "2", optional = true, features = ["max_level_trace", "release_max_level_warn"] }
 slog-term = { version = "2", optional = true }
 slog-async = { version = "2", optional = true }
 
 [features]
-dbg = ["lazy_static", "slog", "slog-term", "slog-async", "parking_lot/deadlock_detection"]
+dbg = ["slog", "slog-term", "slog-async", "parking_lot/deadlock_detection"]
 
 [profile.release]
 codegen-units = 1

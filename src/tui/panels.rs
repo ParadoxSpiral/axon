@@ -26,6 +26,7 @@ use std::collections::HashMap;
 use std::cmp::Ordering;
 use std::io::Write;
 
+use config::CONFIG;
 use rpc::RpcContext;
 use super::{widgets, Component, Renderable, HandleInput, HandleRpc, InputResult};
 use utils::align;
@@ -44,11 +45,26 @@ pub struct LoginPanel {
 impl LoginPanel {
     pub fn new() -> LoginPanel {
         LoginPanel {
-            server: widgets::Input::from("ws://:8412", 6),
-            pass: widgets::PasswordInput::with_capacity(20),
+            server: CONFIG.server.as_ref().map(|s| widgets::Input::from(s.clone(), s.len() + 1)).unwrap_or_else(|| widgets::Input::from("ws://:8412".into(), 6)),
+            pass: CONFIG.pass.as_ref().map(|s| widgets::PasswordInput::from(s.clone(), s.len() + 1)).unwrap_or_else(|| widgets::PasswordInput::with_capacity(20)),
             srv_selected: true,
             error: None,
         }
+    }
+
+    pub fn try_connect(&self, ctx: &RpcContext) -> Result<MainPanel, (String, &'static str)> {
+        Url::parse(self.server.inner())
+        .map_err(|err| (format!("{}", err), "Url"))
+        .and_then(|server| {
+            let pass = self.pass.inner();
+            ctx.wait_init(server, pass.to_owned())
+            .map(|_| {
+                MainPanel::new(ctx)
+            })
+            .map_err(|err| {
+                (format!("{}", err), "RPC")
+            })
+        })
     }
 }
 
@@ -163,24 +179,14 @@ impl HandleInput for LoginPanel {
             },
 
             Key::Char('\n') => {
-                return Url::parse(self.server.inner())
-                .map_err(|err| (format!("{}", err), "Url"))
-                .and_then(|server| {
-                    let pass = self.pass.inner();
-                    ctx.wait_init(server, pass.to_owned())
-                .map(|()| {
-                    InputResult::ReplaceWith(Box::new(MainPanel::new(ctx)) as Box<Component>)
-                })
-                        .map_err(|err| {
-                            (format!("{}", err), "RPC")
-                        })
-                })
-                // FIXME: with closure disjoint borrows this could go into the above map_err
-                .map_err(|(e, name)| {
-                    self.error = Some((e, name));
-                    InputResult::Rerender
-                })
-                .unwrap_or_else(|e| e);
+                match self.try_connect(ctx) {
+                    Ok(main) => {
+                        return InputResult::ReplaceWith(Box::new(main) as Box<Component>);
+                    }
+                    Err(e) => {
+                        self.error = Some(e);
+                    }
+                }
             }
 
             Key::Char(c) => if self.srv_selected {
