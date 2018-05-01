@@ -476,18 +476,14 @@ impl Renderable for MainPanel {
     fn render(&mut self, target: &mut Vec<u8>, width: u16, height: u16, x_off: u16, y_off: u16) {
         // If the display got downsized, we possibly need to tighten the torrent selection
         let d = self.torrents.1 - self.torrents.0;
-        let sub = if self.details.1.is_empty() {
-            0
-        } else {
-            6
-        };
+        let sub = if self.details.1.is_empty() { 0 } else { 6 };
         // - 2 because of the server footer, -1 because of 1-0 index conversion
         let torr_height = height.saturating_sub(3 + sub) as usize;
         if d > torr_height {
             self.torrents.1 -= d - torr_height;
         }
 
-        let draw_torrents = |target: &mut _, width, height, x, y| {
+        let draw_torrents = |target: &mut _, width: u16, height, x, y| {
             let mut width_status = 0;
             let mut width_throttle_up = 0;
             let mut width_throttle_down = 0;
@@ -527,8 +523,10 @@ impl Renderable for MainPanel {
                     },
                 );
             }
-            let left = self.torrents.2.iter().map(|t| t.path.len()).max().unwrap_or(0) as u16;
 
+            let width_right = (3 + 2 + width_status + 1 + 10 + 1 + width_throttle_up + 3 + 10 + 1
+                + width_throttle_down + 5 + width_ratio + 2 + 10 + 3
+                + 10 + 1) as u16;
             for (i, t) in self.torrents
                 .2
                 .iter()
@@ -563,7 +561,13 @@ impl Renderable for MainPanel {
                         &**t.name.as_ref().unwrap_or_else(|| &t.path),
                         c_e
                     ),
-                ).render(target, width, 1, x, y + i as u16);
+                ).render(
+                    target,
+                    width.saturating_sub(width_right + 1),
+                    1,
+                    x,
+                    y + i as u16,
+                );
                 widgets::Text::<_, align::x::Right, align::y::Top>::new(
                     true,
                     format!(
@@ -603,9 +607,9 @@ impl Renderable for MainPanel {
                     ),
                 ).render(
                     target,
-                    width.saturating_sub(1 + left),
+                    width_right,
                     1,
-                    x + 1 + left,
+                    x + (width - width_right),
                     y + i as u16,
                 );
             }
