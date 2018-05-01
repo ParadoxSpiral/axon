@@ -14,8 +14,8 @@
 // along with Axon.  If not, see <http://www.gnu.org/licenses/>.
 
 pub mod panels;
-pub mod widgets;
 mod view;
+pub mod widgets;
 
 pub use self::view::View;
 

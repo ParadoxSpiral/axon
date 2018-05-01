@@ -50,7 +50,7 @@ pub trait FormatSize {
 
 static SCALE: [&'static str; 9] = ["B", "KiB", "MiB", "GiB", "TiB", "PiB", "EiB", "ZiB", "YiB"];
 macro_rules! impl_fmt_size {
-    ($impl_ty: ty) => {
+    ($impl_ty:ty) => {
         impl FormatSize for $impl_ty {
             fn fmt_size(self) -> String {
                 let mut size = self as f32;

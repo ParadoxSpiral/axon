@@ -98,7 +98,7 @@ impl HandleInput for Filter {
 }
 
 macro_rules! push_name {
-    ($n: ident, $s: ident) => {
+    ($n:ident, $s:ident) => {
         if !$n.is_empty() {
             $n.push(' ');
         }

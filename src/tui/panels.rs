@@ -16,19 +16,19 @@
 use natord;
 use synapse_rpc::message::{CMessage, SMessage};
 use synapse_rpc::resource::{Resource, ResourceKind, SResourceUpdate, Server, Torrent, Tracker};
-use termion::{color, cursor};
 use termion::event::Key;
+use termion::{color, cursor};
 use url::Url;
 
 use std::borrow::Cow;
 use std::cmp;
-use std::collections::HashMap;
 use std::cmp::Ordering;
+use std::collections::HashMap;
 use std::io::Write;
 
+use super::{widgets, Component, HandleInput, HandleRpc, InputResult, Renderable};
 use config::CONFIG;
 use rpc::RpcContext;
-use super::{widgets, Component, Renderable, HandleInput, HandleRpc, InputResult};
 use utils::align;
 use utils::align::x::Align;
 use utils::filter::{self, Filter};
@@ -45,8 +45,16 @@ pub struct LoginPanel {
 impl LoginPanel {
     pub fn new() -> LoginPanel {
         LoginPanel {
-            server: CONFIG.server.as_ref().map(|s| widgets::Input::from(s.clone(), s.len() + 1)).unwrap_or_else(|| widgets::Input::from("ws://:8412".into(), 6)),
-            pass: CONFIG.pass.as_ref().map(|s| widgets::PasswordInput::from(s.clone(), s.len() + 1)).unwrap_or_else(|| widgets::PasswordInput::with_capacity(20)),
+            server: CONFIG
+                .server
+                .as_ref()
+                .map(|s| widgets::Input::from(s.clone(), s.len() + 1))
+                .unwrap_or_else(|| widgets::Input::from("ws://:8412".into(), 6)),
+            pass: CONFIG
+                .pass
+                .as_ref()
+                .map(|s| widgets::PasswordInput::from(s.clone(), s.len() + 1))
+                .unwrap_or_else(|| widgets::PasswordInput::with_capacity(20)),
             srv_selected: true,
             error: None,
         }
@@ -54,17 +62,13 @@ impl LoginPanel {
 
     pub fn try_connect(&self, ctx: &RpcContext) -> Result<MainPanel, (String, &'static str)> {
         Url::parse(self.server.inner())
-        .map_err(|err| (format!("{}", err), "Url"))
-        .and_then(|server| {
-            let pass = self.pass.inner();
-            ctx.wait_init(server, pass.to_owned())
-            .map(|_| {
-                MainPanel::new(ctx)
+            .map_err(|err| (format!("{}", err), "Url"))
+            .and_then(|server| {
+                let pass = self.pass.inner();
+                ctx.wait_init(server, pass.to_owned())
+                    .map(|_| MainPanel::new(ctx))
+                    .map_err(|err| (format!("{}", err), "RPC"))
             })
-            .map_err(|err| {
-                (format!("{}", err), "RPC")
-            })
-        })
     }
 }
 
@@ -178,16 +182,14 @@ impl HandleInput for LoginPanel {
                 self.pass.delete();
             },
 
-            Key::Char('\n') => {
-                match self.try_connect(ctx) {
-                    Ok(main) => {
-                        return InputResult::ReplaceWith(Box::new(main) as Box<Component>);
-                    }
-                    Err(e) => {
-                        self.error = Some(e);
-                    }
+            Key::Char('\n') => match self.try_connect(ctx) {
+                Ok(main) => {
+                    return InputResult::ReplaceWith(Box::new(main) as Box<Component>);
                 }
-            }
+                Err(e) => {
+                    self.error = Some(e);
+                }
+            },
 
             Key::Char(c) => if self.srv_selected {
                 self.server.push(c);
@@ -939,43 +941,16 @@ impl HandleRpc for MainPanel {
                         // Server updates
                         SResourceUpdate::Throttle {
                             kind: ResourceKind::Server,
-                            throttle_up,
-                            throttle_down,
                             ..
-                        } => {
-                            self.server.throttle_up = throttle_up;
-                            self.server.throttle_down = throttle_down;
                         }
-                        SResourceUpdate::Rate {
+                        | SResourceUpdate::Rate {
                             kind: ResourceKind::Server,
-                            rate_up,
-                            rate_down,
                             ..
-                        } => {
-                            self.server.rate_up = rate_up;
-                            self.server.rate_down = rate_down;
                         }
-                        SResourceUpdate::ServerTransfer {
-                            rate_up,
-                            rate_down,
-                            transferred_up,
-                            transferred_down,
-                            ses_transferred_up,
-                            ses_transferred_down,
-                            ..
-                        } => {
-                            self.server.rate_up = rate_up;
-                            self.server.rate_down = rate_down;
-                            self.server.transferred_up = transferred_up;
-                            self.server.transferred_down = transferred_down;
-                            self.server.ses_transferred_up = ses_transferred_up;
-                            self.server.ses_transferred_down = ses_transferred_down;
-                        }
-                        SResourceUpdate::ServerSpace { free_space, .. } => {
-                            self.server.free_space = free_space;
-                        }
-                        SResourceUpdate::ServerToken { download_token, .. } => {
-                            self.server.download_token = download_token;
+                        | SResourceUpdate::ServerTransfer { .. }
+                        | SResourceUpdate::ServerSpace { .. }
+                        | SResourceUpdate::ServerToken { .. } => {
+                            self.server.update(upd);
                         }
                         // Tracker updates
                         SResourceUpdate::TrackerStatus {
@@ -1080,13 +1055,9 @@ impl Renderable for TorrentDetailsPanel {
             widgets::Text::<_, align::x::Left, align::y::Top>::new(
                 true,
                 format!(
-                    "{}    {}    Created: {} ago    Modified: {} ago",
+                    "{}    Picker: {:?}    Created: {} ago    Modified: {} ago",
                     self.torr.status.as_str(),
-                    if self.torr.sequential {
-                        "Sequential"
-                    } else {
-                        "Unordered"
-                    },
+                    self.torr.strategy,
                     fmt::date_diff_now(self.torr.created),
                     fmt::date_diff_now(self.torr.modified),
                 ),
@@ -1174,3 +1145,25 @@ impl Renderable for TorrentDetailsPanel {
         }
     }
 }
+
+/*
+struct LimitsPanel {
+    server: Server,
+    torrent: Option<Torrent>,
+}
+
+impl Component for LimitsPanel {}
+
+impl HandleRpc for LimitsPanel {
+    fn init()
+}
+
+impl HandleInput for LimitsPanel {
+    fn input(&mut self, ctx: &RpcContext, k: Key, _: u16, _: u16 ) {
+        
+    }
+}
+
+impl Renderable for LimitsPanel {
+    
+}*/

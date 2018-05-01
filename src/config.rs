@@ -20,10 +20,11 @@ use std::fs::File;
 use std::io::Read;
 use std::path::Path;
 
-lazy_static!{
+lazy_static! {
     pub static ref CONFIG: Config = {
-        let path = shellexpand::full("$XDG_CONFIG_HOME/axon/config.toml").unwrap_or_else(|_| shellexpand::tilde("~/.config/axon/config.toml"));
-        let path =  Path::new(&*path);
+        let path = shellexpand::full("$XDG_CONFIG_HOME/axon/config.toml")
+            .unwrap_or_else(|_| shellexpand::tilde("~/.config/axon/config.toml"));
+        let path = Path::new(&*path);
         if Path::exists(&path) {
             let mut toml = String::new();
             let mut file = File::open(path).unwrap();
@@ -44,7 +45,6 @@ lazy_static!{
             debug!(*::S_IO, "Default config file");
             Config::default()
         }
-
     };
 }
 

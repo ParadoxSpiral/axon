@@ -9,13 +9,14 @@ crossbeam = "0.3"
 futures = "0.1"
 lazy_static = "1"
 natord = "1"
-parking_lot = "0.5"
-synapse-rpc = "0.1.14"
+parking_lot = "0.6"
+synapse-rpc = "0.1.15"
 serde = "1"
 serde_derive = "1"
 serde_json = "1"
 shellexpand = "1"
 termion = "1"
+tokio = "0.1"
 tokio-core = "0.1"
 toml = "0.4"
 websocket = "0.20"
@@ -28,7 +29,7 @@ slog-term = { version = "2", optional = true }
 slog-async = { version = "2", optional = true }
 
 [features]
-dbg = ["slog", "slog-term", "slog-async", "parking_lot/deadlock_detection"]
+dbg = ["slog", "slog-term", "slog-async"]
 
 [profile.release]
 codegen-units = 1

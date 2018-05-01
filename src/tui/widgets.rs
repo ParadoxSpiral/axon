@@ -25,10 +25,10 @@ use std::marker::PhantomData;
 use std::mem::ManuallyDrop;
 use std::str;
 
+use super::{Component, HandleInput, HandleRpc, InputResult, Renderable};
 use rpc::RpcContext;
 use utils;
 use utils::align::{self, x, y};
-use super::{Component, HandleInput, HandleRpc, InputResult, Renderable};
 
 pub enum Unit {
     Lines(u16),
@@ -555,13 +555,13 @@ where
 }
 
 macro_rules! do_write {
-    ($target:expr, $x_off:expr, $y_off:expr, $lit1:expr, $lit2:expr, $ct:expr, $do_goto:expr) => (
+    ($target:expr, $x_off:expr, $y_off:expr, $lit1:expr, $lit2:expr, $ct:expr, $do_goto:expr) => {
         if $do_goto {
             write!($target, $lit1, cursor::Goto($x_off, $y_off), $ct).unwrap();
         } else {
             write!($target, $lit2, $ct).unwrap();
         }
-    )
+    };
 }
 
 impl<T, AX, AY> Renderable for Text<T, AX, AY>
@@ -772,11 +772,11 @@ impl Input {
     }
     pub fn push(&mut self, c: char) {
         let offset = self.content
-                         .graphemes(true)
-                         .take(self.pos - 1)
-                         .collect::<String>()
-                         .bytes()
-                         .count();
+            .graphemes(true)
+            .take(self.pos - 1)
+            .collect::<String>()
+            .bytes()
+            .count();
         self.content.insert(offset, c);
         self.pos += 1;
     }

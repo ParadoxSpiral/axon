@@ -16,9 +16,9 @@
 // along with Axon.  If not, see <http://www.gnu.org/licenses/>.
 
 pub mod x {
-    use termion::cursor;
-    use std::io::Write;
     use super::super::*;
+    use std::io::Write;
+    use termion::cursor;
     pub trait Align {
         fn align_offset(lines: &[&str], width: u16) -> Alignment;
         fn align(_target: &mut Vec<u8>, _lines: &[&str]) {

@@ -15,29 +15,30 @@
 // You should have received a copy of the GNU General Public License
 // along with Axon.  If not, see <http://www.gnu.org/licenses/>.
 
-use futures::{Future, Sink, Stream as FutStream};
-use futures::future::{self, Either};
+use futures::future;
 use futures::sink::Wait;
 use futures::stream::{SplitSink, SplitStream};
 use futures::sync::mpsc::{self, Receiver, Sender};
+use futures::{Future, Sink, Stream as FutStream};
 use parking_lot::Mutex;
 use serde_json;
 use synapse_rpc;
 use synapse_rpc::message::{CMessage, SMessage};
-use tokio::reactor::{Core, Timeout};
+use tokio::util::FutureExt;
+use tokio_core::reactor::Core;
 use url::Url;
-use websocket::{ClientBuilder, CloseData};
-use websocket::async::{MessageCodec, Stream};
 use websocket::async::client::Framed;
+use websocket::async::{MessageCodec, Stream};
 use websocket::message::OwnedMessage;
+use websocket::{ClientBuilder, CloseData};
 
 use std::cell::RefCell;
 use std::error::Error;
 use std::mem::ManuallyDrop;
-use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
-use std::time::Duration;
+use std::sync::Arc;
 use std::thread;
+use std::time::{Duration, Instant};
 
 use tui::View;
 
@@ -126,37 +127,36 @@ impl<'v> RpcContext<'v> {
         #[cfg(feature = "dbg")]
         trace!(*::S_RPC, "Initiating ctx");
         let url = srv.query_pairs_mut().append_pair("password", pass).finish();
-        let mut err = None;
         CORE.with(|core| {
             let mut core = core.borrow_mut();
             let (sink, stream) = {
-                let timeout = Timeout::new(Duration::from_secs(10), &core.handle()).unwrap();
                 let fut = ClientBuilder::from_url(url)
                     .async_connect(None, &core.handle())
                     .map_err(|err| format!("{:?}", err))
-                    .select2(
-                        timeout.map(|_| "Timeout while connecting to server (10s)".to_owned()),
-                    );
+                    .deadline(Instant::now() + Duration::from_secs(10))
+                    .map_err(|e| {
+                        if e.is_timer() {
+                            "Timeout while connecting to server (10s)".to_owned()
+                        } else {
+                            e.into_inner().unwrap()
+                        }
+                    });
+
                 match core.run(fut) {
-                    Ok(Either::A(((client, _), _))) => client.split(),
-                    Ok(Either::B((e, _))) | Err(Either::A((e, _))) => {
-                        err = Some(e);
-                        return;
+                    Ok(client) => client.0.split(),
+                    // Need to convert error types here
+                    Err(err) => {
+                        return Err(err);
                     }
-                    _ => unreachable!(),
                 }
             };
             SOCKET.with(|s| {
                 *s.borrow_mut() = Some((stream, sink.wait()));
+                #[cfg(feature = "dbg")]
+                trace!(*::S_RPC, "Initiated ctx");
             });
-        });
-        if let Some(e) = err {
-            return Err(e);
-        } else {
-            #[cfg(feature = "dbg")]
-            trace!(*::S_RPC, "Initiated ctx");
             Ok(())
-        }
+        })
     }
 
     pub fn disconnect(&self) {

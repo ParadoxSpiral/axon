@@ -15,9 +15,9 @@
 
 use parking_lot::{Condvar, Mutex};
 use synapse_rpc::message::SMessage;
-use termion::{self, clear, cursor};
 use termion::event::Key;
 use termion::raw::{IntoRawMode, RawTerminal};
+use termion::{self, clear, cursor};
 use websocket;
 
 use std::cell::RefCell;
@@ -28,8 +28,8 @@ use std::mem;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
+use super::{panels, widgets, Component, HandleInput, HandleRpc, InputResult, Renderable};
 use rpc::RpcContext;
-use super::{widgets, panels, Component, HandleInput, HandleRpc, InputResult, Renderable};
 use utils::align;
 
 pub struct View {

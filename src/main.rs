@@ -29,7 +29,9 @@ extern crate serde_json;
 extern crate shellexpand;
 extern crate synapse_rpc;
 extern crate termion;
-extern crate tokio_core as tokio;
+extern crate tokio;
+// TODO: Once the websockets impl uses the new tokio, we can drop this
+extern crate tokio_core;
 extern crate toml;
 extern crate unicode_segmentation;
 extern crate unicode_width;
@@ -54,8 +56,8 @@ use termion::input::TermRead;
 
 use config::CONFIG;
 use rpc::RpcContext;
-use tui::View;
 use tui::InputResult;
+use tui::View;
 
 #[cfg(feature = "dbg")]
 lazy_static! {
@@ -89,9 +91,9 @@ fn main() {
 
     #[cfg(feature = "dbg")]
     {
+        use parking_lot::deadlock;
         use std::thread;
         use std::time::Duration;
-        use parking_lot::deadlock;
 
         // Create a background thread which checks for deadlocks every 10s
         thread::spawn(move || loop {
