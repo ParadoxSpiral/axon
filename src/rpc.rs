@@ -294,7 +294,10 @@ impl<'v> RpcContext<'v> {
                                             future::ok(())
                                         }
                                         SMessage::RpcVersion(ver) => {
-                                            if ver.major != synapse_rpc::MAJOR_VERSION {
+                                            if ver.major != synapse_rpc::MAJOR_VERSION
+                                                || (ver.minor != synapse_rpc::MINOR_VERSION
+                                                    && synapse_rpc::MAJOR_VERSION == 0)
+                                            {
                                                 self.view.connection_close(Some(CloseData::new(
                                                     1,
                                                     format!(
