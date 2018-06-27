@@ -18,7 +18,6 @@ use synapse_rpc::message::{CMessage, SMessage};
 use synapse_rpc::resource::{Resource, ResourceKind, SResourceUpdate, Server, Torrent, Tracker};
 use termion::event::Key;
 use termion::{color, cursor};
-use url::Url;
 
 use std::borrow::Cow;
 use std::cmp;
@@ -39,7 +38,6 @@ pub struct LoginPanel {
     server: widgets::Input,
     pass: widgets::PasswordInput,
     srv_selected: bool,
-    error: Option<(String, &'static str)>,
 }
 
 impl LoginPanel {
@@ -56,91 +54,68 @@ impl LoginPanel {
                 .map(|s| widgets::PasswordInput::from(s.clone(), s.len() + 1))
                 .unwrap_or_else(|| widgets::PasswordInput::with_capacity(20)),
             srv_selected: true,
-            error: None,
         }
     }
+}
 
-    pub fn try_connect(&self, ctx: &RpcContext) -> Result<MainPanel, (String, &'static str)> {
-        Url::parse(self.server.inner())
-            .map_err(|err| (format!("{}", err), "Url"))
-            .and_then(|server| {
-                let pass = self.pass.inner();
-                ctx.wait_init(server, pass.to_owned())
-                    .map(|_| MainPanel::new(ctx))
-                    .map_err(|err| (format!("{}", err), "RPC"))
-            })
+impl Component for LoginPanel {}
+
+impl HandleRpc for LoginPanel {
+    fn rpc(&mut self, _: &RpcContext, _: SMessage) -> bool {
+        unreachable!()
+    }
+    fn init(&mut self, _: &RpcContext) {
+        unreachable!()
     }
 }
 
 impl Renderable for LoginPanel {
     fn render(&mut self, target: &mut Vec<u8>, width: u16, height: u16, _: u16, _: u16) {
-        let draw = |target: &mut Vec<u8>, width, height, _, _| {
-            let (srv, pass) = if self.srv_selected {
-                (
-                    format!(
-                        "{}Server{}: {}",
-                        color::Fg(color::Cyan),
-                        color::Fg(color::Reset),
-                        self.server.format_active()
-                    ),
-                    format!("Pass: {}", self.pass.format_inactive()),
-                )
-            } else {
-                (
-                    format!("Server: {}", self.server.format_inactive()),
-                    format!(
-                        "{}Pass{}: {}",
-                        color::Fg(color::Cyan),
-                        color::Fg(color::Reset),
-                        self.pass.format_active()
-                    ),
-                )
-            };
-            let lines = &[
-                "Welcome to axon, the synapse TUI",
-                "Login to a synapse instance:",
-                &srv,
-                &pass,
-            ];
-
-            write!(
-                target,
-                "{}",
-                cursor::Goto(
-                    match align::x::CenterLongestLeft::align_offset(lines, width) {
-                        align::x::Alignment::Single(x) => x,
-                        _ => unreachable!(),
-                    },
-                    height / 3
-                )
-            ).unwrap();
-            align::x::Left::align(target, lines);
-        };
-
-        if let Some((ref e, ref name)) = self.error {
-            widgets::BorrowedOverlay::new(
-                &mut widgets::Text::<_, align::x::Center, align::y::Top>::new(true, &**e),
-                &mut widgets::RenderFn::new(draw),
-                (cmp::max(name.len(), e.len()) as u16 + 2, 1),
-                Some(&color::Red),
-                Some(*name),
-            ).render(target, width, height, 1, 1);
+        let (srv, pass) = if self.srv_selected {
+            (
+                format!(
+                    "{}Server{}: {}",
+                    color::Fg(color::Cyan),
+                    color::Fg(color::Reset),
+                    self.server.format_active()
+                ),
+                format!("Pass: {}", self.pass.format_inactive()),
+            )
         } else {
-            draw(target, width, height, 1, 1);
-        }
-    }
+            (
+                format!("Server: {}", self.server.format_inactive()),
+                format!(
+                    "{}Pass{}: {}",
+                    color::Fg(color::Cyan),
+                    color::Fg(color::Reset),
+                    self.pass.format_active()
+                ),
+            )
+        };
+        let lines = &[
+            "Welcome to axon, the synapse TUI",
+            "Login to a synapse instance:",
+            &srv,
+            &pass,
+        ];
 
-    fn name(&self) -> String {
-        "login".to_owned()
+        write!(
+            target,
+            "{}",
+            cursor::Goto(
+                match align::x::CenterLongestLeft::align_offset(lines, width) {
+                    align::x::Alignment::Single(x) => x,
+                    _ => unreachable!(),
+                },
+                height / 3
+            )
+        ).unwrap();
+        align::x::Left::align(target, lines);
     }
 }
 
 impl HandleInput for LoginPanel {
     fn input(&mut self, ctx: &RpcContext, k: Key, _: u16, _: u16) -> InputResult {
-        if self.error.is_some() {
-            self.error = None;
-            return InputResult::Rerender;
-        }
         match k {
             Key::Home => if self.srv_selected {
                 self.server.home();
@@ -182,14 +157,9 @@ impl HandleInput for LoginPanel {
                 self.pass.delete();
             },
 
-            Key::Char('\n') => match self.try_connect(ctx) {
-                Ok(main) => {
-                    return InputResult::ReplaceWith(Box::new(main) as Box<Component>);
-                }
-                Err(e) => {
-                    self.error = Some(e);
-                }
-            },
+            Key::Char('\n') => {
+                ctx.start_init(self.server.inner().to_owned(), self.pass.inner().to_owned());
+            }
 
             Key::Char(c) => if self.srv_selected {
                 self.server.push(c);
@@ -226,7 +196,7 @@ pub struct MainPanel {
 }
 
 impl MainPanel {
-    fn new(ctx: &RpcContext) -> MainPanel {
+    pub fn new(ctx: &RpcContext) -> MainPanel {
         let mut p = MainPanel {
             focus: Focus::Torrents,
             filter: None,

@@ -153,6 +153,14 @@ impl View {
             _ => true,
         }
     }
+
+    // Called by RPC to signify successful login
+    pub fn login(&self, rpc: &RpcContext) {
+        let mut ct = self.content.lock();
+        *ct = DisplayState::Component(TopLevelComponent::Other(Box::new(panels::MainPanel::new(
+            rpc,
+        ))));
+    }
 }
 
 enum DisplayState {
@@ -182,7 +190,6 @@ impl DisplayState {
     }
     fn input(&mut self, ctx: &RpcContext, k: Key, width: u16, height: u16) -> InputResult {
         // FIXME: Shitty borrow-checker pleaser
-        //
         if let DisplayState::Component(ref mut cmp) = *self {
             return cmp.input(ctx, k, width, height);
         }

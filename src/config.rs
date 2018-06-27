@@ -39,6 +39,11 @@ lazy_static! {
                 }
                 debug!(*::S_IO, "{:#?}", cfg);
             }
+
+            if cfg.autoconnect && !cfg.server.is_some() {
+                panic!("Set to autoconnect but no server specified");
+            }
+
             cfg
         } else {
             #[cfg(feature = "dbg")]

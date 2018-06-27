@@ -130,7 +130,8 @@ impl Filter {
             let mut l = w.char_indices();
             // This guards against bigger than 1 byte code points, and a criterion not having been
             // fully written yet
-            if l.next().map(|l| l.0).unwrap_or(1) != 0 || l.next().map(|l| l.0).unwrap_or(0) != 1
+            if l.next().map(|l| l.0).unwrap_or(1) != 0
+                || l.next().map(|l| l.0).unwrap_or(0) != 1
                 || l.next().map(|l| l.0).unwrap_or(0) != 2
             {
                 push_name!(name, w);

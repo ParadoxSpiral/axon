@@ -37,7 +37,6 @@ use std::error::Error;
 use std::mem::ManuallyDrop;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
-use std::thread;
 use std::time::{Duration, Instant};
 
 use tui::View;
@@ -52,16 +51,10 @@ enum StreamRes {
 }
 
 enum WaiterMsg {
-    Init(Url, String, Arc<Mutex<InitRes>>),
+    // Server, pass
+    Init(String, String),
     Send(OwnedMessage),
     Close,
-}
-
-#[derive(PartialEq)]
-enum InitRes {
-    Ok,
-    Err(String),
-    Untouched,
 }
 
 thread_local!(
@@ -71,56 +64,32 @@ thread_local!(
                 = ManuallyDrop::new(RefCell::new(Core::new().unwrap()));
 );
 
-pub struct RpcContext<'v> {
+pub struct RpcContext {
     waiter: (Mutex<Sender<WaiterMsg>>, Mutex<Receiver<WaiterMsg>>),
     // FIXME: Once feature `integer atomics` lands, switch to AtomicU64
     serial: AtomicUsize,
-    view: &'v View,
 }
 
-impl<'v> RpcContext<'v> {
-    pub fn new(view: &'v View) -> RpcContext<'v> {
+impl RpcContext {
+    pub fn new() -> RpcContext {
         RpcContext {
             waiter: {
                 let (s, r) = mpsc::channel(10);
                 (Mutex::new(s), Mutex::new(r))
             },
             serial: AtomicUsize::new(0),
-            view,
         }
     }
 
-    pub fn wait_init(&self, srv: Url, pass: String) -> Result<(), String> {
+    pub fn start_init(&self, srv: String, pass: String) {
         #[cfg(feature = "dbg")]
-        trace!(*::S_VIEW, "RPC should init");
-        let res = Arc::new(Mutex::new(InitRes::Untouched));
+        trace!(*::S_RPC, "RPC should init");
+
         self.waiter
             .0
             .lock()
-            .try_send(WaiterMsg::Init(srv, pass, Arc::clone(&res)))
+            .try_send(WaiterMsg::Init(srv, pass))
             .unwrap();
-        loop {
-            {
-                match res.try_lock() {
-                    Some(ref g) if **g == InitRes::Untouched => (),
-                    None => (),
-                    _ => {
-                        break;
-                    }
-                }
-            }
-            thread::sleep(Duration::from_millis(5))
-        }
-        let r = res.lock();
-        match *r {
-            InitRes::Ok => {
-                #[cfg(feature = "dbg")]
-                trace!(*::S_VIEW, "RPC initialized");
-                Ok(())
-            }
-            InitRes::Err(ref e) => Err(e.clone()),
-            _ => unreachable!(),
-        }
     }
 
     fn init(&self, mut srv: Url, pass: &str) -> Result<(), String> {
@@ -181,7 +150,7 @@ impl<'v> RpcContext<'v> {
         self.waiter.0.lock().try_send(WaiterMsg::Send(msg)).unwrap();
     }
 
-    pub fn recv_until_death(&self) {
+    pub fn recv_until_death(&self, view: &View) {
         // Each iteration represents the lifetime of a connection to a server
         loop {
             // Wait for initialization
@@ -194,14 +163,20 @@ impl<'v> RpcContext<'v> {
                 .unwrap()
                 .unwrap()
             {
-                WaiterMsg::Init(srv, pass, res) => {
-                    let r = self.init(srv, &pass);
-                    if r.is_ok() {
-                        *res.lock() = InitRes::Ok;
-                    } else {
-                        *res.lock() = InitRes::Err(r.unwrap_err());
-                        continue;
+                WaiterMsg::Init(srv, pass) => {
+                    match Url::parse(&srv) {
+                        Err(e) => {
+                            view.global_err(e, Some("Url".to_owned()));
+                            continue;
+                        }
+                        Ok(srv) => {
+                            if let Err(e) = self.init(srv, &pass) {
+                                view.global_err(e, Some("RPC".to_owned()));
+                                continue;
+                            }
+                        }
                     }
+                    view.login(&self);
                 }
                 WaiterMsg::Close => {
                     #[cfg(feature = "dbg")]
@@ -229,13 +204,14 @@ impl<'v> RpcContext<'v> {
                             waiter
                                 .by_ref()
                                 .map(|msg| match msg {
-                                    WaiterMsg::Init(_, _, _) => unreachable!(),
+                                    WaiterMsg::Init(_, _) => unreachable!(),
                                     WaiterMsg::Close => StreamRes::Close,
                                     WaiterMsg::Send(msg) => {
                                         // TODO: Make async
                                         match (sink.send(msg), sink.flush()) {
-                                            (Err(e), _) | (_, Err(e)) => self.view
-                                                .global_err(format!("{:?}", e), Some("RPC")),
+                                            (Err(e), _) | (_, Err(e)) => {
+                                                view.global_err(format!("{:?}", e), Some("RPC"))
+                                            }
                                             _ => {}
                                         }
                                         StreamRes::Idle
@@ -243,7 +219,7 @@ impl<'v> RpcContext<'v> {
                                 })
                                 .map_err(|err| format!("{:?}", err)),
                         )
-                        .or_else(|e| future::err(self.view.global_err(e, Some("RPC"))))
+                        .or_else(|e| future::err(view.global_err(e, Some("RPC"))))
                         .and_then(|res| match res {
                             StreamRes::Idle => future::ok(()),
                             StreamRes::Close => future::err(()),
@@ -257,13 +233,13 @@ impl<'v> RpcContext<'v> {
                                 OwnedMessage::Close(data) => {
                                     #[cfg(feature = "dbg")]
                                     debug!(*::S_RPC, "Server closed: {:?}", data);
-                                    self.view.connection_close(data);
+                                    view.connection_close(data);
                                     future::err(())
                                 }
                                 OwnedMessage::Text(s) => match serde_json::from_str::<SMessage>(&s)
                                 {
                                     Err(e) => {
-                                        self.view.global_err(
+                                        view.global_err(
                                             format!("{}", e.description()),
                                             Some("RPC"),
                                         );
@@ -273,7 +249,8 @@ impl<'v> RpcContext<'v> {
                                         SMessage::ResourcesExtant { ids, .. } => {
                                             self.send(CMessage::Subscribe {
                                                 serial: self.next_serial(),
-                                                ids: ids.iter()
+                                                ids: ids
+                                                    .iter()
                                                     .map(|id| (&**id).to_owned())
                                                     .collect(),
                                             });
@@ -287,7 +264,7 @@ impl<'v> RpcContext<'v> {
                                                 ids: ids.clone(),
                                             });
 
-                                            self.view.handle_rpc(
+                                            view.handle_rpc(
                                                 self,
                                                 SMessage::ResourcesRemoved { serial, ids },
                                             );
@@ -298,7 +275,7 @@ impl<'v> RpcContext<'v> {
                                                 || (ver.minor != synapse_rpc::MINOR_VERSION
                                                     && synapse_rpc::MAJOR_VERSION == 0)
                                             {
-                                                self.view.connection_close(Some(CloseData::new(
+                                                view.connection_close(Some(CloseData::new(
                                                     1,
                                                     format!(
                                                         "Server version {:?} \
@@ -314,15 +291,14 @@ impl<'v> RpcContext<'v> {
                                             } else {
                                                 #[cfg(feature = "dbg")]
                                                 debug!(*::S_RPC, "RPC version match");
-                                                self.view
-                                                    .handle_rpc(self, SMessage::RpcVersion(ver));
+                                                view.handle_rpc(self, SMessage::RpcVersion(ver));
                                                 future::ok(())
                                             }
                                         }
                                         _ => {
                                             #[cfg(feature = "dbg")]
                                             debug!(*::S_RPC, "Received: {:#?}", msg);
-                                            self.view.handle_rpc(self, msg);
+                                            view.handle_rpc(self, msg);
                                             future::ok(())
                                         }
                                     },

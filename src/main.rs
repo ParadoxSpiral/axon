@@ -51,7 +51,6 @@ mod rpc;
 mod tui;
 pub mod utils;
 
-use termion::event::Key;
 use termion::input::TermRead;
 
 use config::CONFIG;
@@ -87,18 +86,18 @@ lazy_static! {
 
 fn main() {
     let view = View::init();
-    let rpc = RpcContext::new(&view);
+    let rpc = RpcContext::new();
+
+    if CONFIG.autoconnect {
+        #[cfg(feature = "dbg")]
+        trace!(*S_VIEW, "Autoconnecting");
+        rpc.start_init(
+            CONFIG.server.clone().unwrap(),
+            CONFIG.pass.clone().unwrap_or_else(|| "".to_owned()),
+        );
+    }
 
     crossbeam::scope(|scope| {
-        if CONFIG.autoconnect {
-            scope.spawn(|| {
-                print!("Autoconnecting…");
-                #[cfg(feature = "dbg")]
-                trace!(*S_VIEW, "Autoconnecting");
-                view.handle_input(&rpc, Key::Char('\n'));
-            });
-        }
-
         // View worker
         scope.spawn(|| {
             #[cfg(feature = "dbg")]
@@ -110,7 +109,7 @@ fn main() {
         scope.spawn(|| {
             #[cfg(feature = "dbg")]
             trace!(*S_RPC, "Entering loop");
-            rpc.recv_until_death();
+            rpc.recv_until_death(&view);
         });
 
         // Input worker
