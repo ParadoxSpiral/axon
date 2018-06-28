@@ -389,6 +389,7 @@ impl HandleInput for MainPanel {
                         }
                     };
 
+                    let tlen = tree.len() as _;
                     Some(InputResult::ReplaceWith(Box::new(
                         widgets::OwnedOverlay::<_, color::Red>::new(
                             widgets::CloseOnInput::new(
@@ -396,7 +397,7 @@ impl HandleInput for MainPanel {
                                 &[],
                             ),
                             Box::new(self.clone()),
-                            (len, 1),
+                            (len, tlen),
                             Some(color::Red),
                             "Errors".to_owned(),
                         ),
