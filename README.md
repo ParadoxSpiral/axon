@@ -32,8 +32,8 @@ Torrent details:
 - `q` closes the current details panel
 
 ## Configuration
-The config file is searched for at `$XDG_CONFIG_HOME/axon/config.toml` and `~/.config/axon/config.toml`.
-For options, see `example_config.toml`.
+The config file is searched for at `$XDG_CONFIG_HOME/axon/conf.toml` and `~/.config/axon/conf.toml`.
+For options, see `example_conf.toml`.
 
 ## Compilation dependencies
 Rust minimum version of 1.24, pkg-config, gcc or clang, openssl.
