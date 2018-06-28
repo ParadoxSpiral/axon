@@ -474,10 +474,6 @@ where
     T: Component,
     C: Color,
 {
-    fn init(&mut self, ctx: &RpcContext) {
-        self.top.init(ctx);
-        self.below.init(ctx);
-    }
     fn rpc(&mut self, ctx: &RpcContext, msg: SMessage) -> bool {
         self.top.rpc(ctx, msg.clone());
         self.below.rpc(ctx, msg)
@@ -964,9 +960,6 @@ where
     fn rpc(&mut self, ctx: &RpcContext, msg: SMessage) -> bool {
         self.content.rpc(ctx, msg)
     }
-    fn init(&mut self, ctx: &RpcContext) {
-        self.content.init(ctx);
-    }
 }
 
 pub struct IgnoreRpc<T>
@@ -1001,5 +994,4 @@ where
     fn rpc(&mut self, _: &RpcContext, _: SMessage) -> bool {
         false
     }
-    fn init(&mut self, _: &RpcContext) {}
 }

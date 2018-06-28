@@ -24,19 +24,6 @@ use termion::event::Key;
 use rpc::RpcContext;
 use tui::{widgets, HandleInput, InputResult};
 
-static mut SERIAL: u64 = 0;
-
-// This shall only be called once per server lifetime at initialization
-pub unsafe fn init(ctx: &RpcContext) {
-    SERIAL = ctx.next_serial();
-
-    ctx.send(CMessage::FilterSubscribe {
-        serial: SERIAL,
-        kind: ResourceKind::Torrent,
-        criteria: Vec::new(),
-    });
-}
-
 #[derive(Clone)]
 enum FilterMode {
     Insensitive,
@@ -60,63 +47,29 @@ impl FilterMode {
 pub struct Filter {
     mode: FilterMode,
     input: widgets::Input,
-}
-
-impl HandleInput for Filter {
-    fn input(&mut self, ctx: &RpcContext, k: Key, _: u16, _: u16) -> InputResult {
-        match k {
-            Key::Ctrl('s') => {
-                self.mode.cycle();
-                self.update(ctx);
-            }
-            Key::Backspace => {
-                self.input.backspace();
-                self.update(ctx);
-            }
-            Key::Delete => {
-                self.input.delete();
-                self.update(ctx);
-            }
-            Key::Home => {
-                self.input.home();
-            }
-            Key::End => {
-                self.input.end();
-            }
-            Key::Left => self.input.cursor_left(),
-            Key::Right => self.input.cursor_right(),
-            Key::Char(c) => {
-                self.input.push(c);
-                self.update(ctx);
-            }
-            _ => {
-                return InputResult::Key(k);
-            }
-        }
-        InputResult::Rerender
-    }
-}
-
-macro_rules! push_name {
-    ($n:ident, $s:ident) => {
-        if !$n.is_empty() {
-            $n.push(' ');
-        }
-        $n.push_str($s);
-    };
+    serial: u64,
 }
 
 impl Filter {
-    pub fn new() -> Filter {
+    pub fn new(ctx: &RpcContext) -> Filter {
+        let serial = ctx.next_serial();
+        ctx.send(CMessage::FilterSubscribe {
+            serial: serial,
+            kind: ResourceKind::Torrent,
+            criteria: Vec::new(),
+        });
+
         Filter {
             mode: FilterMode::Insensitive,
             input: widgets::Input::from("".into(), 1),
+            serial,
         }
     }
 
-    pub fn reset(&self, ctx: &RpcContext) {
+    pub fn reset(&mut self, ctx: &RpcContext) {
+        self.input.clear();
         ctx.send(CMessage::FilterSubscribe {
-            serial: unsafe { SERIAL },
+            serial: self.serial,
             kind: ResourceKind::Torrent,
             criteria: Vec::new(),
         });
@@ -134,7 +87,10 @@ impl Filter {
                 || l.next().map(|l| l.0).unwrap_or(0) != 1
                 || l.next().map(|l| l.0).unwrap_or(0) != 2
             {
-                push_name!(name, w);
+                if !name.is_empty() {
+                    name.push(' ');
+                }
+                name.push_str(w);
                 continue;
             }
 
@@ -197,7 +153,10 @@ impl Filter {
                     });
                 },
                 _ => {
-                    push_name!(name, w);
+                    if !name.is_empty() {
+                        name.push(' ');
+                    }
+                    name.push_str(w);
                 }
             }
         }
@@ -214,7 +173,7 @@ impl Filter {
         }
 
         ctx.send(CMessage::FilterSubscribe {
-            serial: unsafe { SERIAL },
+            serial: self.serial,
             kind: ResourceKind::Torrent,
             criteria,
         });
@@ -240,5 +199,40 @@ impl Filter {
             c_e,
             cnt
         )
+    }
+}
+
+impl HandleInput for Filter {
+    fn input(&mut self, ctx: &RpcContext, k: Key, _: u16, _: u16) -> InputResult {
+        match k {
+            Key::Ctrl('s') => {
+                self.mode.cycle();
+                self.update(ctx);
+            }
+            Key::Backspace => {
+                self.input.backspace();
+                self.update(ctx);
+            }
+            Key::Delete => {
+                self.input.delete();
+                self.update(ctx);
+            }
+            Key::Home => {
+                self.input.home();
+            }
+            Key::End => {
+                self.input.end();
+            }
+            Key::Left => self.input.cursor_left(),
+            Key::Right => self.input.cursor_right(),
+            Key::Char(c) => {
+                self.input.push(c);
+                self.update(ctx);
+            }
+            _ => {
+                return InputResult::Key(k);
+            }
+        }
+        InputResult::Rerender
     }
 }

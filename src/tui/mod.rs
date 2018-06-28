@@ -39,7 +39,6 @@ pub trait HandleInput {
 
 pub trait HandleRpc {
     fn rpc(&mut self, ctx: &RpcContext, msg: SMessage) -> bool;
-    fn init(&mut self, ctx: &RpcContext);
 }
 
 pub enum InputResult {

@@ -30,7 +30,7 @@ use config::CONFIG;
 use rpc::RpcContext;
 use utils::align;
 use utils::align::x::Align;
-use utils::filter::{self, Filter};
+use utils::filter::Filter;
 use utils::fmt::{self, FormatSize};
 
 #[derive(Clone)]
@@ -62,9 +62,6 @@ impl Component for LoginPanel {}
 
 impl HandleRpc for LoginPanel {
     fn rpc(&mut self, _: &RpcContext, _: SMessage) -> bool {
-        unreachable!()
-    }
-    fn init(&mut self, _: &RpcContext) {
         unreachable!()
     }
 }
@@ -184,12 +181,13 @@ enum Focus {
 #[derive(Clone)]
 pub struct MainPanel {
     focus: Focus,
-    filter: Option<Filter>,
+    filter: Filter,
+    filter_disp: bool,
     // lower bound of torrent selection,  current pos, _
     torrents: (usize, usize, Vec<Torrent>),
     // tracker base, Vec<(tracker id, torrent_id, optional error)>
     trackers: Vec<(Tracker, Vec<(String, String, Option<String>)>)>,
-    trackers_displ: bool,
+    trackers_disp: bool,
     details: (usize, Vec<TorrentDetailsPanel>),
     server: Server,
     server_version: String,
@@ -197,18 +195,28 @@ pub struct MainPanel {
 
 impl MainPanel {
     pub fn new(ctx: &RpcContext) -> MainPanel {
-        let mut p = MainPanel {
+        ctx.send(CMessage::FilterSubscribe {
+            serial: ctx.next_serial(),
+            kind: ResourceKind::Server,
+            criteria: Vec::new(),
+        });
+        ctx.send(CMessage::FilterSubscribe {
+            serial: ctx.next_serial(),
+            kind: ResourceKind::Tracker,
+            criteria: Vec::new(),
+        });
+
+        MainPanel {
             focus: Focus::Torrents,
-            filter: None,
+            filter: Filter::new(ctx),
+            filter_disp: false,
             torrents: (0, 0, Vec::new()),
             trackers: Vec::new(),
-            trackers_displ: false,
+            trackers_disp: false,
             details: (0, Vec::new()),
             server: Default::default(),
             server_version: "?.?".to_owned(),
-        };
-        p.init(ctx);
-        p
+        }
     }
 }
 
@@ -223,12 +231,12 @@ impl HandleInput for MainPanel {
             // Special keys
             (Key::Ctrl('f'), Focus::Filter) => {
                 self.focus = Focus::Torrents;
-                self.filter.as_ref().unwrap().reset(ctx);
-                self.filter = None;
+                self.filter.reset(ctx);
+                self.filter_disp = false;
             }
             (Key::Ctrl('f'), _) => {
                 self.focus = Focus::Filter;
-                self.filter = Some(Filter::new());
+                self.filter_disp = true;
             }
 
             (Key::Esc, Focus::Filter) => {
@@ -313,12 +321,13 @@ impl HandleInput for MainPanel {
             }
 
             // Key::Char
-            (Key::Char('\n'), Focus::Torrents) if self.filter.is_some() => {
+            (Key::Char('\n'), Focus::Torrents) if self.filter_disp => {
                 self.focus = Focus::Filter;
             }
 
             (Key::Char('d'), Focus::Torrents) if !self.torrents.2.is_empty() => {
-                if let Some(pos) = self.details
+                if let Some(pos) = self
+                    .details
                     .1
                     .iter()
                     .position(|dt| dt.inner().id == self.torrents.2[self.torrents.1].id)
@@ -427,12 +436,12 @@ impl HandleInput for MainPanel {
             }
 
             (Key::Char('t'), Focus::Torrents) | (Key::Char('t'), Focus::Details) => {
-                self.trackers_displ = !self.trackers_displ;
+                self.trackers_disp = !self.trackers_disp;
             }
 
             // Catch all filter input
             (k, Focus::Filter) => {
-                return self.filter.as_mut().unwrap().input(ctx, k, width, height);
+                return self.filter.input(ctx, k, width, height);
             }
 
             // Bounce unused
@@ -586,12 +595,12 @@ impl Renderable for MainPanel {
                     y + i as u16,
                 );
             }
-            if let Some(ref filter) = self.filter {
+            if self.filter_disp {
                 widgets::Text::<_, align::x::Left, align::y::Top>::new(
                     true,
                     match self.focus {
-                        Focus::Filter => filter.format(true),
-                        _ => filter.format(false),
+                        Focus::Filter => self.filter.format(true),
+                        _ => self.filter.format(false),
                     },
                 ).render(target, width, 1, x, height);
             }
@@ -701,7 +710,7 @@ impl Renderable for MainPanel {
             ).render(target, width, height, x, y);
         };
 
-        match (self.trackers_displ, self.details.1.is_empty()) {
+        match (self.trackers_disp, self.details.1.is_empty()) {
             (false, true) => {
                 widgets::HSplit::new(
                     &mut widgets::RenderFn::new(draw_torrents) as &mut Renderable,
@@ -978,21 +987,6 @@ impl HandleRpc for MainPanel {
                 true
             }
             _ => false,
-        }
-    }
-    fn init(&mut self, ctx: &RpcContext) {
-        ctx.send(CMessage::FilterSubscribe {
-            serial: ctx.next_serial(),
-            kind: ResourceKind::Server,
-            criteria: Vec::new(),
-        });
-        ctx.send(CMessage::FilterSubscribe {
-            serial: ctx.next_serial(),
-            kind: ResourceKind::Tracker,
-            criteria: Vec::new(),
-        });
-        unsafe {
-            filter::init(ctx);
         }
     }
 }
