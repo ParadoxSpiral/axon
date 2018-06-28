@@ -27,7 +27,9 @@ use rpc::RpcContext;
 pub trait Component: Renderable + HandleInput + HandleRpc {}
 
 pub trait Renderable {
-    fn name(&self) -> String;
+    fn name(&self) -> String {
+        "unnamed".to_owned()
+    }
     fn render(&mut self, target: &mut Vec<u8>, width: u16, height: u16, x_off: u16, y_off: u16);
 }
 

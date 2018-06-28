@@ -76,13 +76,6 @@ where
     L: BorrowMut<Renderable + 'a>,
     R: BorrowMut<Renderable + 'a>,
 {
-    fn name(&self) -> String {
-        format!(
-            "({} ╍ {})",
-            self.left.borrow().name(),
-            self.right.borrow().name()
-        )
-    }
     fn render(&mut self, target: &mut Vec<u8>, width: u16, height: u16, x_off: u16, y_off: u16) {
         // Draw left
         let left_w = match self.left_size {
@@ -235,20 +228,6 @@ impl<'a, T> Renderable for BorrowedSameTabs<'a, T>
 where
     T: Renderable + 'a,
 {
-    fn name(&self) -> String {
-        if self.tabs.len() == 1 {
-            format!("{}", self.tabs.first().unwrap().borrow().name())
-        } else {
-            let mut names = String::new();
-            for (i, c) in self.tabs.iter().enumerate() {
-                if i > 0 {
-                    names.push_str(" | ");
-                }
-                names.push_str(&c.borrow().name());
-            }
-            format!("tabs: {}", names)
-        }
-    }
     fn render(&mut self, target: &mut Vec<u8>, width: u16, height: u16, x_off: u16, y_off: u16) {
         write!(target, "{}", cursor::Goto(x_off, y_off)).unwrap();
 
@@ -351,9 +330,6 @@ where
     B: Renderable + ?Sized,
     C: Color,
 {
-    fn name(&self) -> String {
-        format!("overlay: {}^_{}", self.top.name(), self.below.name())
-    }
     fn render(&mut self, target: &mut Vec<u8>, width: u16, height: u16, x_off: u16, y_off: u16) {
         // Render lower layer
         self.below.render(target, width, height, x_off, y_off);
@@ -482,9 +458,6 @@ where
     T: Component,
     C: Color,
 {
-    fn name(&self) -> String {
-        format!("overlay: {}^_{}", self.top.name(), self.below.name())
-    }
     fn render(&mut self, target: &mut Vec<u8>, width: u16, height: u16, x_off: u16, y_off: u16) {
         BorrowedOverlay::<_, _, C>::new(
             &mut self.top,
@@ -570,9 +543,6 @@ where
     AX: x::Align,
     AY: y::Align,
 {
-    fn name(&self) -> String {
-        "txt".into()
-    }
     fn render(&mut self, target: &mut Vec<u8>, width: u16, height: u16, x_off: u16, y_off: u16) {
         let content = self.content.borrow();
         let x_off = x_off + match AX::align_offset(&[content], width) {
@@ -913,9 +883,6 @@ impl<F> Renderable for RenderFn<F>
 where
     F: Fn(&mut Vec<u8>, u16, u16, u16, u16),
 {
-    fn name(&self) -> String {
-        "Unnamed render fun".into()
-    }
     fn render(&mut self, target: &mut Vec<u8>, width: u16, height: u16, x_off: u16, y_off: u16) {
         (self.ct)(target, width, height, x_off, y_off);
     }
@@ -940,9 +907,6 @@ impl<F, T> Renderable for RenderStateFn<F, T>
 where
     F: Fn(&mut Vec<u8>, u16, u16, u16, u16, &mut T),
 {
-    fn name(&self) -> String {
-        "Unnamed render fun".into()
-    }
     fn render(&mut self, target: &mut Vec<u8>, width: u16, height: u16, x_off: u16, y_off: u16) {
         (self.ct)(target, width, height, x_off, y_off, &mut self.state);
     }
@@ -975,9 +939,6 @@ impl<'t, T> Renderable for CloseOnInput<'t, T>
 where
     T: Renderable + HandleRpc,
 {
-    fn name(&self) -> String {
-        self.content.name()
-    }
     fn render(&mut self, target: &mut Vec<u8>, width: u16, height: u16, x_off: u16, y_off: u16) {
         self.content.render(target, width, height, x_off, y_off);
     }
@@ -1028,9 +989,6 @@ impl<T> Renderable for IgnoreRpc<T>
 where
     T: Renderable,
 {
-    fn name(&self) -> String {
-        self.content.name()
-    }
     fn render(&mut self, target: &mut Vec<u8>, width: u16, height: u16, x_off: u16, y_off: u16) {
         self.content.render(target, width, height, x_off, y_off);
     }

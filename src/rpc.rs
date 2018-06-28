@@ -24,6 +24,7 @@ use parking_lot::Mutex;
 use serde_json;
 use synapse_rpc;
 use synapse_rpc::message::{CMessage, SMessage};
+use termion::color;
 use tokio::util::FutureExt;
 use tokio_core::reactor::Core;
 use url::Url;
@@ -148,12 +149,12 @@ impl RpcContext {
                 WaiterMsg::Init(srv, pass) => {
                     match Url::parse(&srv) {
                         Err(e) => {
-                            view.global_err(e, Some("Url".to_owned()));
+                            view.overlay("Url".to_owned(), e.to_string(), Some(color::Red));
                             continue;
                         }
                         Ok(srv) => match self.init(srv, &pass) {
                             Err(e) => {
-                                view.global_err(e, Some("RPC".to_owned()));
+                                view.overlay("RPC".to_owned(), e, Some(color::Red));
                                 continue;
                             }
                             Ok((c, (st, si))) => {
@@ -189,7 +190,11 @@ impl RpcContext {
                                 // TODO: Make async
                                 match (sink.send(msg), sink.flush()) {
                                     (Err(e), _) | (_, Err(e)) => {
-                                        view.global_err(format!("{:?}", e), Some("RPC"))
+                                        view.overlay(
+                                            "RPC".to_owned(),
+                                            format!("{:?}", e),
+                                            Some(color::Red),
+                                        );
                                     }
                                     _ => {}
                                 }
@@ -198,7 +203,7 @@ impl RpcContext {
                         })
                         .map_err(|err| format!("{:?}", err)),
                 )
-                .or_else(|e| future::err(view.global_err(e, Some("RPC"))))
+                .or_else(|e| future::err(view.overlay("RPC".to_owned(), e, Some(color::Red))))
                 .and_then(|res| match res {
                     StreamRes::Idle => future::ok(()),
                     StreamRes::Close => future::err(()),
@@ -217,7 +222,11 @@ impl RpcContext {
                         }
                         OwnedMessage::Text(s) => match serde_json::from_str::<SMessage>(&s) {
                             Err(e) => {
-                                view.global_err(format!("{}", e.description()), Some("RPC"));
+                                view.overlay(
+                                    "RPC".to_owned(),
+                                    format!("{}", e.description()),
+                                    Some(color::Red),
+                                );
                                 future::ok(())
                             }
                             Ok(msg) => match msg {

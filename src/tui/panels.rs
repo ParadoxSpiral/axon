@@ -389,18 +389,19 @@ impl HandleInput for MainPanel {
                         }
                     };
 
-                    Some(InputResult::ReplaceWith(
-                        Box::new(widgets::OwnedOverlay::new(
+                    Some(InputResult::ReplaceWith(Box::new(
+                        widgets::OwnedOverlay::<_, color::Red>::new(
                             widgets::CloseOnInput::new(
                                 widgets::IgnoreRpc::new(widgets::RenderStateFn::new(draw, tree)),
                                 &[],
                             ),
                             Box::new(self.clone()),
                             (len, 1),
-                            color::Red,
+                            Some(color::Red),
                             "Errors".to_owned(),
-                        )) as Box<Component>,
-                    ))
+                        ),
+                    )
+                        as Box<Component>))
                 })
                     .unwrap_or(InputResult::Key(Key::Char('e')));
             }
@@ -443,9 +444,6 @@ impl HandleInput for MainPanel {
 }
 
 impl Renderable for MainPanel {
-    fn name(&self) -> String {
-        "torrents".into()
-    }
     fn render(&mut self, target: &mut Vec<u8>, width: u16, height: u16, x_off: u16, y_off: u16) {
         // If the display got downsized, we possibly need to tighten the torrent selection
         let d = self.torrents.1 - self.torrents.0;
