@@ -81,7 +81,6 @@ lazy_static! {
         "RPC version" => format!("{}.{}", synapse_rpc::MAJOR_VERSION, synapse_rpc::MINOR_VERSION)));
     static ref S_VIEW: slog::Logger = (*SLOG_ROOT).new(o!("View" => true));
     static ref S_IO: slog::Logger = (*SLOG_ROOT).new(o!("IO" => true));
-    static ref S_DEADLOCK: slog::Logger = (*SLOG_ROOT).new(o!("DEADLOCK" => true));
 }
 
 fn main() {

@@ -193,26 +193,28 @@ impl DisplayState {
         if let DisplayState::Component(ref mut cmp) = *self {
             return cmp.input(ctx, k, width, height);
         }
-        let (clone, drop) = if let DisplayState::GlobalErr(_, _, ref mut cmp) = *self {
-            match *cmp {
-                TopLevelComponent::Login(ref l) => (
-                    DisplayState::Component(TopLevelComponent::Login(l.clone())),
-                    true,
-                ),
-                TopLevelComponent::Other(ref mut o) => (
-                    DisplayState::Component(TopLevelComponent::Other(unsafe {
-                        Box::from_raw((&mut **o) as *mut Component)
-                    })),
-                    false,
-                ),
+        if [Key::Esc, Key::Backspace, Key::Delete, Key::Char('q')].contains(&k) {
+            let (clone, drop) = if let DisplayState::GlobalErr(_, _, ref mut cmp) = *self {
+                match *cmp {
+                    TopLevelComponent::Login(ref l) => (
+                        DisplayState::Component(TopLevelComponent::Login(l.clone())),
+                        true,
+                    ),
+                    TopLevelComponent::Other(ref mut o) => (
+                        DisplayState::Component(TopLevelComponent::Other(unsafe {
+                            Box::from_raw((&mut **o) as *mut Component)
+                        })),
+                        false,
+                    ),
+                }
+            } else {
+                unreachable!()
+            };
+            if drop {
+                mem::replace(self, clone);
+            } else {
+                mem::forget(mem::replace(self, clone));
             }
-        } else {
-            unreachable!()
-        };
-        if drop {
-            mem::replace(self, clone);
-        } else {
-            mem::forget(mem::replace(self, clone));
         }
         InputResult::Rerender
     }

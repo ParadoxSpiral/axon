@@ -391,9 +391,10 @@ impl HandleInput for MainPanel {
 
                     Some(InputResult::ReplaceWith(
                         Box::new(widgets::OwnedOverlay::new(
-                            widgets::CloseOnInput::new(widgets::IgnoreRpc::new(
-                                widgets::RenderStateFn::new(draw, tree),
-                            )),
+                            widgets::CloseOnInput::new(
+                                widgets::IgnoreRpc::new(widgets::RenderStateFn::new(draw, tree)),
+                                &[],
+                            ),
                             Box::new(self.clone()),
                             (len, 1),
                             color::Red,
@@ -508,6 +509,7 @@ impl Renderable for MainPanel {
             {
                 let (c_s, c_e) = match self.focus {
                     Focus::Torrents
+                        // FIXME: Tracker errors
                         if i + self.torrents.0 == self.torrents.1 && t.error.is_some() =>
                     {
                         (

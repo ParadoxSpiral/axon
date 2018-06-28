@@ -948,29 +948,30 @@ where
     }
 }
 
-pub struct CloseOnInput<T>
+pub struct CloseOnInput<'t, T>
 where
     T: Renderable + HandleRpc,
 {
     content: T,
+    trigger: &'t [Key],
 }
 
-impl<T> CloseOnInput<T>
+impl<'t, T> CloseOnInput<'t, T>
 where
     T: Renderable + HandleRpc,
 {
-    pub fn new(ct: T) -> CloseOnInput<T> {
-        CloseOnInput { content: ct }
+    pub fn new(content: T, trigger: &'t [Key]) -> CloseOnInput<'t, T> {
+        CloseOnInput { content, trigger }
     }
 }
 
-impl<T> Component for CloseOnInput<T>
+impl<'t, T> Component for CloseOnInput<'t, T>
 where
     T: Renderable + HandleRpc,
 {
 }
 
-impl<T> Renderable for CloseOnInput<T>
+impl<'t, T> Renderable for CloseOnInput<'t, T>
 where
     T: Renderable + HandleRpc,
 {
@@ -982,16 +983,20 @@ where
     }
 }
 
-impl<T> HandleInput for CloseOnInput<T>
+impl<'t, T> HandleInput for CloseOnInput<'t, T>
 where
     T: Renderable + HandleRpc,
 {
-    fn input(&mut self, _: &RpcContext, _: Key, _: u16, _: u16) -> InputResult {
-        InputResult::Close
+    fn input(&mut self, _: &RpcContext, k: Key, _: u16, _: u16) -> InputResult {
+        if self.trigger.len() == 0 || self.trigger.contains(&k) {
+            InputResult::Close
+        } else {
+            InputResult::Rerender
+        }
     }
 }
 
-impl<T> HandleRpc for CloseOnInput<T>
+impl<'t, T> HandleRpc for CloseOnInput<'t, T>
 where
     T: Renderable + HandleRpc,
 {
