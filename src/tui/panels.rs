@@ -553,7 +553,7 @@ impl Renderable for MainPanel {
                 widgets::Text::<_, align::x::Right, align::y::Top>::new(
                     true,
                     format!(
-                        "{}{:03}% {: ^w_status$} {: >10}[{: ^w_tu$}]↑ {: >10}[{: ^w_td$}]↓   \
+                        "{}{: >3}% {: ^w_status$} {: >10}[{: ^w_tu$}]↑ {: >10}[{: ^w_td$}]↓   \
                          {: >w_rat$.2}  {: >10}↑  {: >10}↓{}",
                         c_s,
                         (t.progress * 100.).round(),
