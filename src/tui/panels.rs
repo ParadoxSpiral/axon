@@ -480,13 +480,13 @@ impl Renderable for MainPanel {
                     width_throttle_up,
                     t.throttle_up
                         .map(|t| if t == -1 { 1 } else { 10 })
-                        .unwrap_or(6),
+                        .unwrap_or(1),
                 );
                 width_throttle_down = cmp::max(
                     width_throttle_down,
                     t.throttle_down
                         .map(|t| if t == -1 { 1 } else { 10 })
-                        .unwrap_or(6),
+                        .unwrap_or(1),
                 );
                 width_ratio = cmp::max(
                     width_ratio,
@@ -565,7 +565,7 @@ impl Renderable for MainPanel {
                             } else {
                                 t.fmt_size()
                             })
-                            .unwrap_or_else(|| "global".into()),
+                            .unwrap_or_else(|| "*".into()),
                         t.rate_down.fmt_size(),
                         t.throttle_down
                             .map(|t| if t == -1 {
@@ -573,7 +573,7 @@ impl Renderable for MainPanel {
                             } else {
                                 t.fmt_size()
                             })
-                            .unwrap_or_else(|| "global".into()),
+                            .unwrap_or_else(|| "*".into()),
                         if t.transferred_down == 0 {
                             1.
                         } else {
