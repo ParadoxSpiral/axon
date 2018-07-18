@@ -505,20 +505,33 @@ impl Renderable for MainPanel {
                 );
             }
 
-            let width_right = (3 + 2 + width_status + 1 + 10 + 1 + width_throttle_up + 3 + 10 + 1
-                + width_throttle_down + 5 + width_ratio + 2 + 10 + 3
-                + 10 + 1) as u16;
-            for (i, t) in self.torrents
+            let width_right =
+                62 + width_status + width_throttle_up + width_throttle_down + width_ratio;
+            for (i, t) in self
+                .torrents
                 .2
                 .iter()
                 .skip(self.torrents.0)
                 .take(height as _)
                 .enumerate()
             {
+                let tracker_err = self
+                    .trackers
+                    .iter()
+                    .filter(|tra| {
+                        t.tracker_urls
+                            .iter()
+                            .any(|tu| *tu == tra.0.url.host_str().unwrap())
+                    })
+                    .any(|(ref base, ref others)| {
+                        base.error.is_some() || others
+                            .iter()
+                            .any(|&(_, ref id, ref e)| t.id == *id && e.is_some())
+                    });
                 let (c_s, c_e) = match self.focus {
                     Focus::Torrents
-                        // FIXME: Tracker errors
-                        if i + self.torrents.0 == self.torrents.1 && t.error.is_some() =>
+                        if i + self.torrents.0 == self.torrents.1
+                            && (t.error.is_some() || tracker_err) =>
                     {
                         (
                             format!("{}{}", color::Fg(color::Cyan), color::Bg(color::Red)),
@@ -529,7 +542,7 @@ impl Renderable for MainPanel {
                         format!("{}", color::Fg(color::Cyan)),
                         format!("{}", color::Fg(color::Reset)),
                     ),
-                    _ if t.error.is_some() => (
+                    _ if t.error.is_some() || tracker_err => (
                         format!("{}", color::Fg(color::Red)),
                         format!("{}", color::Fg(color::Reset)),
                     ),
@@ -545,7 +558,7 @@ impl Renderable for MainPanel {
                     ),
                 ).render(
                     target,
-                    width.saturating_sub(width_right + 1),
+                    width.saturating_sub(width_right as u16 + 1),
                     1,
                     x,
                     y + i as u16,
@@ -589,9 +602,9 @@ impl Renderable for MainPanel {
                     ),
                 ).render(
                     target,
-                    width_right,
+                    width_right as u16,
                     1,
-                    x + (width - width_right),
+                    x + (width - width_right as u16),
                     y + i as u16,
                 );
             }
@@ -616,12 +629,12 @@ impl Renderable for MainPanel {
                     .map(|t| {
                         t.tracker_urls
                             .iter()
-                            .any(|u| &*u == base.url.host_str().unwrap())
+                            .any(|u| *u == base.url.host_str().unwrap())
                     })
                     .unwrap_or(false);
                 let (c_s, c_e) = match (
                     matches,
-                    base.error.is_some() || others.iter().any(|&(_, ref id, ref e)| {
+                    (base.error.is_some() && base.torrent_id == sel_tor.map(|t| &*t.id).unwrap_or("")) || others.iter().any(|&(_, ref id, ref e)| {
                         sel_tor.map(|t| t.id == *id).unwrap_or(false) && e.is_some()
                     }),
                 ) {
