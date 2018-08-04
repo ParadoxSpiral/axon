@@ -31,23 +31,12 @@ lazy_static! {
             file.read_to_string(&mut toml).unwrap();
 
             let cfg = toml::from_str::<Config>(&*toml).unwrap();
-            #[cfg(feature = "dbg")]
-            {
-                let mut cfg = cfg.clone();
-                if cfg.pass.is_some() {
-                    cfg.pass = Some(String::from("hidden"));
-                }
-                debug!(*::S_IO, "{:#?}", cfg);
-            }
-
             if cfg.autoconnect && !cfg.server.is_some() {
                 panic!("Set to autoconnect but no server specified");
             }
 
             cfg
         } else {
-            #[cfg(feature = "dbg")]
-            debug!(*::S_IO, "Default config file");
             Config::default()
         }
     };
