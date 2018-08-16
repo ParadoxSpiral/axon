@@ -681,7 +681,7 @@ impl Renderable for MainPanel {
             widgets::Text::<_, align::x::Left, align::y::Top>::new(
                 true,
                 format!(
-                    "Server: {} {}, {}   {}[{}]↑ {}[{}]↓   \
+                    "Server {}: {}, {}   {}[{}]↑ {}[{}]↓   \
                      Session: {:.2}, {}↑ {}↓   Lifetime: {:.2}, {}↑ {}↓",
                     self.server_version,
                     fmt::date_diff_now(self.server.started),
@@ -1033,7 +1033,12 @@ impl Renderable for TorrentDetailsPanel {
             widgets::Text::<_, align::x::Left, align::y::Top>::new(
                 true,
                 format!(
-                    "{}    Picker: {:?}    Created: {} ago    Modified: {} ago",
+                    "{}: {}    Picker: {:?}    Created: {} ago    Modified: {} ago",
+                    if self.torr.private {
+                        "Private"
+                    } else {
+                        "Public"
+                    },
                     self.torr.status.as_str(),
                     self.torr.strategy,
                     fmt::date_diff_now(self.torr.created),
