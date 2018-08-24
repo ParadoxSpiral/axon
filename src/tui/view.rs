@@ -63,7 +63,7 @@ pub struct View {
     content: Mutex<Box<Component>>,
     logged_in: AtomicBool,
     render_buf: Mutex<Vec<u8>>,
-    stdout: Mutex<RawTerminal<Stdout>>,
+    stdout: Mutex<Option<RawTerminal<Stdout>>>,
 }
 
 impl View {
@@ -136,8 +136,21 @@ impl View {
             content: Mutex::new(Box::new(panels::LoginPanel::new())),
             logged_in: AtomicBool::new(false),
             render_buf: Mutex::new(rb),
-            stdout: Mutex::new(io::stdout().into_raw_mode().unwrap()),
+            stdout: Mutex::new(Some(io::stdout().into_raw_mode().unwrap())),
         }
+    }
+
+    // We call this helper once at shutdown to ensure that the terminal is set back from raw mode
+    // to normal mode, since lazy-static does not run destructors on programm exit. Also unhides
+    // the cursor
+    pub fn restore_terminal(&self) {
+        let mut out = self.stdout.lock();
+        {
+            let out = out.as_mut().unwrap();
+            write!(out, "{}", cursor::Show).unwrap();
+            out.flush().unwrap();
+        }
+        mem::replace(&mut *out, None);
     }
 
     // Called by RPC to signify successful login
@@ -149,6 +162,7 @@ impl View {
 
     fn render(&self, ct: &mut Component) {
         let mut out = self.stdout.lock();
+        let out = out.as_mut().unwrap();
 
         if let Ok((width, height)) = termion::terminal_size() {
             let mut buf = self.render_buf.lock();

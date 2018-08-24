@@ -109,4 +109,6 @@ fn main() {
     input::start();
 
     rt.shutdown_on_idle().wait().unwrap();
+
+    VIEW.restore_terminal();
 }
