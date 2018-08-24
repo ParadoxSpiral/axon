@@ -13,124 +13,177 @@
 // You should have received a copy of the GNU General Public License
 // along with Axon.  If not, see <http://www.gnu.org/licenses/>.
 
-use parking_lot::{Condvar, Mutex};
+use futures::sync::mpsc;
+use parking_lot::Mutex;
 use synapse_rpc::message::SMessage;
 use termion::event::Key;
 use termion::raw::{IntoRawMode, RawTerminal};
 use termion::{self, clear, color, cursor};
-use websocket;
+use tokio::prelude::*;
+use tokio::timer;
 
-use std::cell::RefCell;
 use std::cmp;
 use std::io::{self, Stdout, Write};
 use std::mem;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use super::{panels, widgets, Component, InputResult};
-use rpc::RpcContext;
+use rpc;
 use utils::align;
+
+lazy_static! {
+    static ref RPC: (
+        Mutex<mpsc::UnboundedSender<SMessage<'static>>>,
+        Mutex<mpsc::UnboundedReceiver<SMessage<'static>>>
+    ) = {
+        let (s, r) = mpsc::unbounded();
+        (Mutex::new(s), Mutex::new(r))
+    };
+    static ref INPUT: (
+        Mutex<mpsc::UnboundedSender<Key>>,
+        Mutex<mpsc::UnboundedReceiver<Key>>
+    ) = {
+        let (s, r) = mpsc::unbounded();
+        (Mutex::new(s), Mutex::new(r))
+    };
+}
+
+pub fn notify_rpc(msg: SMessage<'static>) {
+    // We don't care about the error, because it only signifies closal, which implies shutdown
+    let _ = RPC.0.lock().unbounded_send(msg);
+}
+
+pub fn notify_input(k: Key) {
+    // We don't care about the error, because it only signifies closal, which implies shutdown
+    let _ = INPUT.0.lock().unbounded_send(k);
+}
 
 pub struct View {
     content: Mutex<Box<Component>>,
-    render_buf: Mutex<Vec<u8>>,
-    waiter: (Condvar, Mutex<()>),
-    running: AtomicBool,
     logged_in: AtomicBool,
-    stdout: RefCell<RawTerminal<Stdout>>,
+    render_buf: Mutex<Vec<u8>>,
+    stdout: Mutex<RawTerminal<Stdout>>,
 }
 
-unsafe impl Send for View {}
-unsafe impl Sync for View {}
-
 impl View {
-    pub fn init() -> View {
+    pub fn new() -> View {
+        let mut interv = timer::Interval::new(Instant::now(), Duration::from_secs(1));
+        ::EXECUTOR.spawn(
+            future::poll_fn(move || {
+                let mut ct = ::VIEW.content.lock();
+                let mut inp = INPUT.1.lock();
+                let mut rpc = RPC.1.lock();
+
+                let mut render = false;
+                loop {
+                    let (k, msg) = match (interv.poll(), inp.poll(), rpc.poll()) {
+                        (Err(_), _, _) | (_, Err(_), _) | (_, _, Err(_)) => {
+                            rpc::disconnect();
+                            rpc.close();
+                            inp.close();
+                            return Err(());
+                        }
+                        (_, Ok(Async::Ready(k)), Ok(Async::Ready(msg))) => (k, msg),
+                        (_, Ok(Async::Ready(k)), _) => (k, None),
+                        (_, _, Ok(Async::Ready(msg))) => (None, msg),
+                        (Ok(Async::Ready(_)), _, _) => {
+                            render = true;
+                            (None, None)
+                        }
+                        _ => {
+                            break;
+                        }
+                    };
+
+                    if let Some(k) = k {
+                        match ::VIEW.handle_input(&mut *ct, k) {
+                            InputResult::Rerender => {
+                                render = true;
+                            }
+                            InputResult::Close => {
+                                rpc.close();
+                                inp.close();
+                                return Ok(Async::Ready(()));
+                            }
+                            _ => (),
+                        }
+                    }
+                    if let Some(msg) = msg {
+                        if ct.rpc(msg) {
+                            render = true;
+                        }
+                    }
+                }
+
+                if render {
+                    ::VIEW.render(&mut **ct);
+                }
+
+                Ok(Async::NotReady)
+            }).then(|v| {
+                #[cfg(feature = "dbg")]
+                debug!(*::S_VIEW, "View finishing");
+                v
+            }),
+        );
+
         let size = termion::terminal_size().unwrap_or((0, 0));
         let mut rb = Vec::with_capacity(size.0 as usize * size.1 as usize + 1);
-
         write!(rb, "{}", cursor::Hide).unwrap();
+
         View {
             content: Mutex::new(Box::new(panels::LoginPanel::new())),
-            render_buf: Mutex::new(rb),
-            stdout: RefCell::new(io::stdout().into_raw_mode().unwrap()),
-            running: AtomicBool::new(true),
             logged_in: AtomicBool::new(false),
-            waiter: (Condvar::new(), Mutex::new(())),
+            render_buf: Mutex::new(rb),
+            stdout: Mutex::new(io::stdout().into_raw_mode().unwrap()),
         }
-    }
-
-    pub fn logged_in(&self) -> bool {
-        self.logged_in.load(Ordering::Acquire)
     }
 
     // Called by RPC to signify successful login
-    pub fn login(&self, rpc: &RpcContext) {
+    pub fn login(&self) {
         let mut ct = self.content.lock();
-        *ct = Box::new(panels::MainPanel::new(rpc));
+        *ct = Box::new(panels::MainPanel::new());
         self.logged_in.store(true, Ordering::Release);
     }
 
-    pub fn wake(&self) {
-        self.waiter.0.notify_one();
-    }
+    fn render(&self, ct: &mut Component) {
+        let mut out = self.stdout.lock();
 
-    pub fn shutdown(&self) {
-        self.running.store(false, Ordering::Release);
-        self.wake();
-    }
-
-    pub fn render_until_death(&self) {
-        while self.running.load(Ordering::Acquire) {
-            // Render either every s or when input demands it
-            self.render();
-            self.waiter
-                .0
-                .wait_for(&mut self.waiter.1.lock(), Duration::from_secs(1));
-        }
-    }
-
-    pub fn render(&self) {
-        let mut ct = self.content.lock();
         if let Ok((width, height)) = termion::terminal_size() {
             let mut buf = self.render_buf.lock();
-            write!(buf, "{}", clear::All).unwrap();
 
+            write!(buf, "{}", clear::All).unwrap();
             ct.render(&mut buf, width, height, 1, 1);
 
-            let mut o = self.stdout.borrow_mut();
-            o.write_all(&*buf).unwrap();
-            o.flush().unwrap();
+            out.write_all(&*buf).unwrap();
+            out.flush().unwrap();
             buf.clear();
         } else {
-            let mut o = self.stdout.borrow_mut();
-            write!(o, "smol").unwrap();
-            o.flush().unwrap();
+            write!(out, "smol").unwrap();
+            out.flush().unwrap();
         }
     }
 
-    pub fn handle_input(&self, ctx: &RpcContext, k: Key) -> InputResult {
+    fn handle_input(&self, ct: &mut Box<Component>, k: Key) -> InputResult {
         match k {
-            Key::Ctrl('q') => if self.logged_in() {
+            Key::Ctrl('q') => if self.logged_in.load(Ordering::Acquire) {
                 #[cfg(feature = "dbg")]
                 debug!(*::S_VIEW, "Disconnecting");
 
-                ctx.disconnect();
-                self.connection_close(None);
+                rpc::disconnect();
+                self.internal_connection_close(ct);
 
                 InputResult::Rerender
             } else {
                 #[cfg(feature = "dbg")]
                 debug!(*::S_VIEW, "Closing");
 
-                ctx.disconnect();
-                self.shutdown();
-
                 InputResult::Close
             },
             _ => {
                 let s = termion::terminal_size().unwrap_or((0, 0));
-                let mut ct = self.content.lock();
-                match ct.input(ctx, k, s.0, s.1) {
+                match ct.input(k, s.0, s.1) {
                     InputResult::ReplaceWith(other) => {
                         mem::replace(&mut *ct, other);
                         InputResult::Rerender
@@ -141,15 +194,24 @@ impl View {
         }
     }
 
-    pub fn handle_rpc(&self, ctx: &RpcContext, msg: SMessage) {
-        if self.content.lock().rpc(ctx, msg) {
-            self.wake();
-        }
+    pub fn overlay<C: color::Color + Send + Sync + 'static>(
+        &self,
+        name: String,
+        text: String,
+        color: Option<C>,
+    ) {
+        self.internal_overlay(&mut *self.content.lock(), name, text, color)
     }
 
-    pub fn overlay<C: color::Color + 'static>(&self, name: String, text: String, color: Option<C>) {
-        let mut ct = self.content.lock();
+    fn internal_overlay<C: color::Color + Send + Sync + 'static>(
+        &self,
+        ct: &mut Box<Component>,
+        name: String,
+        text: String,
+        color: Option<C>,
+    ) {
         // Because we can't move the component out, we need to use this hack
+        // This is only safe because we leak ct below, so that it won't get freed
         let alias_cur = unsafe { Box::from_raw((&mut **ct) as *mut Component) };
 
         let len = cmp::max(text.len(), name.len()) + 2;
@@ -171,23 +233,18 @@ impl View {
             color,
             Some(name),
         ));
-
         mem::forget(mem::replace(&mut *ct, overlay));
-        drop(ct);
-        self.wake();
+
+        self.render(&mut **ct);
     }
 
-    pub fn connection_close(&self, data: Option<websocket::CloseData>) {
+    pub fn connection_close(&self) {
         let mut ct = self.content.lock();
-        self.logged_in.store(false, Ordering::Release);
+        self.internal_connection_close(&mut *ct);
+    }
 
+    fn internal_connection_close(&self, ct: &mut Box<Component>) {
+        self.logged_in.store(false, Ordering::Release);
         *ct = Box::new(panels::LoginPanel::new());
-        drop(ct);
-        self.overlay(
-            "Connection closed".to_owned(),
-            data.map(|d| format!("{}", d.reason))
-                .unwrap_or_else(|| "Disconnected".to_owned()),
-            Some(color::Red),
-        );
     }
 }

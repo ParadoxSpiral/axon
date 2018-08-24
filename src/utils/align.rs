@@ -19,6 +19,7 @@ pub mod x {
     use super::super::*;
     use std::io::Write;
     use termion::cursor;
+
     pub trait Align {
         fn align_offset(lines: &[&str], width: u16) -> Alignment;
         fn align(_target: &mut Vec<u8>, _lines: &[&str]) {
@@ -84,7 +85,6 @@ pub mod x {
 
 pub mod y {
     pub trait Align {
-        // Unlike the x alignment, this may not vary
         fn align_offset(lines: &[&str], height: u16) -> u16;
     }
 
@@ -98,7 +98,7 @@ pub mod y {
     pub struct Center {}
     impl Align for Center {
         fn align_offset(lines: &[&str], height: u16) -> u16 {
-            (height / 2).saturating_sub(lines.len() as u16)
+            (height / 2).saturating_sub(lines.len() as u16 / 2)
         }
     }
 }

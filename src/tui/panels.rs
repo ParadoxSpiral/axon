@@ -27,11 +27,12 @@ use std::io::Write;
 
 use super::{widgets, Component, HandleInput, HandleRpc, InputResult, Renderable};
 use config::CONFIG;
-use rpc::RpcContext;
 use utils::align;
 use utils::align::x::Align;
 use utils::filter::Filter;
 use utils::fmt::{self, FormatSize};
+
+use rpc;
 
 #[derive(Clone)]
 pub struct LoginPanel {
@@ -61,8 +62,8 @@ impl LoginPanel {
 impl Component for LoginPanel {}
 
 impl HandleRpc for LoginPanel {
-    fn rpc(&mut self, _: &RpcContext, _: SMessage) -> bool {
-        unreachable!()
+    fn rpc(&mut self, _: SMessage) -> bool {
+        false
     }
 }
 
@@ -112,7 +113,7 @@ impl Renderable for LoginPanel {
 }
 
 impl HandleInput for LoginPanel {
-    fn input(&mut self, ctx: &RpcContext, k: Key, _: u16, _: u16) -> InputResult {
+    fn input(&mut self, k: Key, _: u16, _: u16) -> InputResult {
         match k {
             Key::Home => if self.srv_selected {
                 self.server.home();
@@ -155,7 +156,7 @@ impl HandleInput for LoginPanel {
             },
 
             Key::Char('\n') => {
-                ctx.start_init(self.server.inner().to_owned(), self.pass.inner().to_owned());
+                rpc::start_connect(self.server.inner(), self.pass.inner());
             }
 
             Key::Char(c) => if self.srv_selected {
@@ -194,21 +195,21 @@ pub struct MainPanel {
 }
 
 impl MainPanel {
-    pub fn new(ctx: &RpcContext) -> MainPanel {
-        ctx.send(CMessage::FilterSubscribe {
-            serial: ctx.next_serial(),
+    pub fn new() -> MainPanel {
+        rpc::send(CMessage::FilterSubscribe {
+            serial: rpc::next_serial(),
             kind: ResourceKind::Server,
             criteria: Vec::new(),
         });
-        ctx.send(CMessage::FilterSubscribe {
-            serial: ctx.next_serial(),
+        rpc::send(CMessage::FilterSubscribe {
+            serial: rpc::next_serial(),
             kind: ResourceKind::Tracker,
             criteria: Vec::new(),
         });
 
         MainPanel {
             focus: Focus::Torrents,
-            filter: Filter::new(ctx),
+            filter: Filter::new(),
             filter_disp: false,
             torrents: (0, 0, Vec::new()),
             trackers: Vec::new(),
@@ -223,7 +224,7 @@ impl MainPanel {
 impl Component for MainPanel {}
 
 impl HandleInput for MainPanel {
-    fn input(&mut self, ctx: &RpcContext, k: Key, width: u16, height: u16) -> InputResult {
+    fn input(&mut self, k: Key, width: u16, height: u16) -> InputResult {
         // - 2 because of the server footer
         let torr_height = height.saturating_sub(2) as usize;
 
@@ -231,7 +232,7 @@ impl HandleInput for MainPanel {
             // Special keys
             (Key::Ctrl('f'), Focus::Filter) => {
                 self.focus = Focus::Torrents;
-                self.filter.reset(ctx);
+                self.filter.reset();
                 self.filter_disp = false;
             }
             (Key::Ctrl('f'), _) => {
@@ -350,14 +351,14 @@ impl HandleInput for MainPanel {
                 }.and_then(|t| {
                     let mut tree = Vec::new();
                     let mut len = "Errors".len() as u16;
-                    t.error.as_ref().map(|e| {
+                    if let Some(ref e) = t.error {
                         tree.push(e.clone());
                         len = cmp::max(len, e.len() as u16);
-                    });
+                    };
                     for &(ref base, ref others) in self.trackers.iter().filter(|tra| {
                         t.tracker_urls
                             .iter()
-                            .any(|tu| &*tu == tra.0.url.host_str().unwrap())
+                            .any(|tu| *tu == tra.0.url.host_str().unwrap())
                     }) {
                         let mut other_errs = others
                             .iter()
@@ -399,6 +400,7 @@ impl HandleInput for MainPanel {
                     };
 
                     let tlen = tree.len() as _;
+                    // FIXME: Cloning self here is pretty hacky
                     Some(InputResult::ReplaceWith(Box::new(
                         widgets::OwnedOverlay::<_, color::Red>::new(
                             widgets::CloseOnInput::new(
@@ -412,8 +414,7 @@ impl HandleInput for MainPanel {
                         ),
                     )
                         as Box<Component>))
-                })
-                    .unwrap_or(InputResult::Key(Key::Char('e')));
+                }).unwrap_or(InputResult::Key(Key::Char('e')));
             }
 
             (Key::Char('J'), Focus::Torrents) if !self.details.1.is_empty() => {
@@ -425,9 +426,9 @@ impl HandleInput for MainPanel {
             }
 
             (Key::Char('q'), Focus::Details) => {
-                // This is ok, because details only focused when not empty
                 // FIXME: NLL
                 let i = self.details.0;
+                // This is ok, because details only focused when not empty
                 self.details.1.remove(i);
                 self.details.0.saturating_sub(1);
                 if self.details.1.is_empty() {
@@ -441,7 +442,7 @@ impl HandleInput for MainPanel {
 
             // Catch all filter input
             (k, Focus::Filter) => {
-                return self.filter.input(ctx, k, width, height);
+                return self.filter.input(k, width, height);
             }
 
             // Bounce unused
@@ -455,7 +456,7 @@ impl HandleInput for MainPanel {
 
 impl Renderable for MainPanel {
     fn render(&mut self, target: &mut Vec<u8>, width: u16, height: u16, x_off: u16, y_off: u16) {
-        // If the display got downsized, we possibly need to tighten the torrent selection
+        // If the display got downsized, we need to tighten the torrent selection
         let d = self.torrents.1 - self.torrents.0;
         let sub = if self.details.1.is_empty() { 0 } else { 6 };
         // - 2 because of the server footer, -1 because of 1-0 index conversion
@@ -522,12 +523,12 @@ impl Renderable for MainPanel {
                         t.tracker_urls
                             .iter()
                             .any(|tu| *tu == tra.0.url.host_str().unwrap())
-                    })
-                    .any(|(ref base, ref others)| {
+                    }).any(|(ref base, ref others)| {
                         base.error.is_some() || others
                             .iter()
                             .any(|&(_, ref id, ref e)| t.id == *id && e.is_some())
                     });
+
                 let (c_s, c_e) = match self.focus {
                     Focus::Torrents
                         if i + self.torrents.0 == self.torrents.1
@@ -548,6 +549,7 @@ impl Renderable for MainPanel {
                     ),
                     _ => ("".into(), "".into()),
                 };
+
                 widgets::Text::<_, align::x::Left, align::y::Top>::new(
                     true,
                     format!(
@@ -573,19 +575,11 @@ impl Renderable for MainPanel {
                         t.status.as_str(),
                         t.rate_up.fmt_size(),
                         t.throttle_up
-                            .map(|t| if t == -1 {
-                                "∞".into()
-                            } else {
-                                t.fmt_size()
-                            })
+                            .map(|t| if t == -1 { "∞".into() } else { t.fmt_size() })
                             .unwrap_or_else(|| "*".into()),
                         t.rate_down.fmt_size(),
                         t.throttle_down
-                            .map(|t| if t == -1 {
-                                "∞".into()
-                            } else {
-                                t.fmt_size()
-                            })
+                            .map(|t| if t == -1 { "∞".into() } else { t.fmt_size() })
                             .unwrap_or_else(|| "*".into()),
                         if t.transferred_down == 0 {
                             1.
@@ -630,13 +624,14 @@ impl Renderable for MainPanel {
                         t.tracker_urls
                             .iter()
                             .any(|u| *u == base.url.host_str().unwrap())
-                    })
-                    .unwrap_or(false);
+                    }).unwrap_or(false);
                 let (c_s, c_e) = match (
                     matches,
-                    (base.error.is_some() && base.torrent_id == sel_tor.map(|t| &*t.id).unwrap_or("")) || others.iter().any(|&(_, ref id, ref e)| {
-                        sel_tor.map(|t| t.id == *id).unwrap_or(false) && e.is_some()
-                    }),
+                    (base.error.is_some()
+                        && base.torrent_id == sel_tor.map(|t| &*t.id).unwrap_or(""))
+                        || others.iter().any(|&(_, ref id, ref e)| {
+                            sel_tor.map(|t| t.id == *id).unwrap_or(false) && e.is_some()
+                        }),
                 ) {
                     (true, true) => (
                         format!("{}{}", color::Fg(color::Cyan), color::Bg(color::Red)),
@@ -666,7 +661,7 @@ impl Renderable for MainPanel {
         };
         let draw_details = |target: &mut _, width, height, x, y| {
             // FIXME: The unsafe avoids clones; This is perfectly safe but not possible without
-            // "Closures Capture Disjoint Fields" safely
+            // "Closures Capture Disjoint Fields" in safe rust afaict
             widgets::BorrowedSameTabs::new(
                 unsafe {
                     ::std::slice::from_raw_parts_mut(
@@ -689,20 +684,12 @@ impl Renderable for MainPanel {
                     self.server.rate_up.fmt_size(),
                     self.server
                         .throttle_up
-                        .map(|t| if t == -1 {
-                            "∞".into()
-                        } else {
-                            t.fmt_size()
-                        })
+                        .map(|t| if t == -1 { "∞".into() } else { t.fmt_size() })
                         .unwrap_or_else(|| "∞".into()),
                     self.server.rate_down.fmt_size(),
                     self.server
                         .throttle_down
-                        .map(|t| if t == -1 {
-                            "∞".into()
-                        } else {
-                            t.fmt_size()
-                        })
+                        .map(|t| if t == -1 { "∞".into() } else { t.fmt_size() })
                         .unwrap_or_else(|| "∞".into()),
                     if self.server.ses_transferred_down == 0 {
                         1.
@@ -789,7 +776,7 @@ impl Renderable for MainPanel {
 }
 
 impl HandleRpc for MainPanel {
-    fn rpc(&mut self, _: &RpcContext, msg: SMessage) -> bool {
+    fn rpc(&mut self, msg: SMessage) -> bool {
         match msg {
             SMessage::RpcVersion(ver) => {
                 self.server_version = format!("{}.{}", ver.major, ver.minor);
@@ -880,11 +867,13 @@ impl HandleRpc for MainPanel {
                                 self.server = s;
                             }
                             Resource::Torrent(t) => {
-                                let mut name = t.name
+                                let mut name = t
+                                    .name
                                     .as_ref()
                                     .map(|n| n.to_lowercase())
                                     .unwrap_or_else(|| "".to_owned());
-                                let idx = self.torrents
+                                let idx = self
+                                    .torrents
                                     .2
                                     .binary_search_by(|probe| {
                                         natord::compare(
@@ -901,8 +890,7 @@ impl HandleRpc for MainPanel {
                                                 }),
                                             &name,
                                         )
-                                    })
-                                    .unwrap_or_else(|e| e);
+                                    }).unwrap_or_else(|e| e);
                                 name_cache.as_mut().unwrap().insert(t.id.clone(), name);
                                 self.torrents.2.insert(idx, t);
                             }
@@ -1055,20 +1043,12 @@ impl Renderable for TorrentDetailsPanel {
                     self.torr.rate_up.fmt_size(),
                     self.torr
                         .throttle_up
-                        .map(|t| if t == -1 {
-                            "∞".into()
-                        } else {
-                            t.fmt_size()
-                        })
+                        .map(|t| if t == -1 { "∞".into() } else { t.fmt_size() })
                         .unwrap_or_else(|| "global".into()),
                     self.torr.rate_down.fmt_size(),
                     self.torr
                         .throttle_down
-                        .map(|t| if t == -1 {
-                            "∞".into()
-                        } else {
-                            t.fmt_size()
-                        })
+                        .map(|t| if t == -1 { "∞".into() } else { t.fmt_size() })
                         .unwrap_or_else(|| "global".into()),
                     if self.torr.transferred_down == 0 {
                         1.

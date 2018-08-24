@@ -21,7 +21,7 @@ use synapse_rpc::resource::ResourceKind;
 use termion::color;
 use termion::event::Key;
 
-use rpc::RpcContext;
+use rpc;
 use tui::{widgets, HandleInput, InputResult};
 
 #[derive(Clone)]
@@ -51,10 +51,10 @@ pub struct Filter {
 }
 
 impl Filter {
-    pub fn new(ctx: &RpcContext) -> Filter {
-        let serial = ctx.next_serial();
-        ctx.send(CMessage::FilterSubscribe {
-            serial: serial,
+    pub fn new() -> Filter {
+        let serial = rpc::next_serial();
+        rpc::send(CMessage::FilterSubscribe {
+            serial,
             kind: ResourceKind::Torrent,
             criteria: Vec::new(),
         });
@@ -66,16 +66,16 @@ impl Filter {
         }
     }
 
-    pub fn reset(&mut self, ctx: &RpcContext) {
+    pub fn reset(&mut self) {
         self.input.clear();
-        ctx.send(CMessage::FilterSubscribe {
+        rpc::send(CMessage::FilterSubscribe {
             serial: self.serial,
             kind: ResourceKind::Torrent,
             criteria: Vec::new(),
         });
     }
 
-    fn update(&self, ctx: &RpcContext) {
+    fn update(&self) {
         let mut criteria = Vec::with_capacity(1);
         let mut name = String::new();
 
@@ -172,7 +172,7 @@ impl Filter {
             });
         }
 
-        ctx.send(CMessage::FilterSubscribe {
+        rpc::send(CMessage::FilterSubscribe {
             serial: self.serial,
             kind: ResourceKind::Torrent,
             criteria,
@@ -203,19 +203,19 @@ impl Filter {
 }
 
 impl HandleInput for Filter {
-    fn input(&mut self, ctx: &RpcContext, k: Key, _: u16, _: u16) -> InputResult {
+    fn input(&mut self, k: Key, _: u16, _: u16) -> InputResult {
         match k {
             Key::Ctrl('s') => {
                 self.mode.cycle();
-                self.update(ctx);
+                self.update();
             }
             Key::Backspace => {
                 self.input.backspace();
-                self.update(ctx);
+                self.update();
             }
             Key::Delete => {
                 self.input.delete();
-                self.update(ctx);
+                self.update();
             }
             Key::Home => {
                 self.input.home();
@@ -227,7 +227,7 @@ impl HandleInput for Filter {
             Key::Right => self.input.cursor_right(),
             Key::Char(c) => {
                 self.input.push(c);
-                self.update(ctx);
+                self.update();
             }
             _ => {
                 return InputResult::Key(k);

@@ -1,6 +1,6 @@
 // Copyright (C) 2017  ParadoxSpiral
 //
-// This file is part of Axon.
+// This file is part of axon.
 //
 // Axon is free software: you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
@@ -15,29 +15,21 @@
 // You should have received a copy of the GNU General Public License
 // along with Axon.  If not, see <http://www.gnu.org/licenses/>.
 
-pub mod align;
-pub mod filter;
-pub mod fmt;
+use termion::color;
+use termion::input::TermRead;
 
-use unicode_segmentation::UnicodeSegmentation;
-use unicode_width::UnicodeWidthStr;
-
-pub fn count(l: &str) -> usize {
-    l.graphemes(true).map(|g| g.width()).sum()
-}
-
-pub fn count_without_styling(l: &str) -> u16 {
-    let mut count = 0;
-    let mut gs = l.graphemes(true).map(|g| (g, g.width()));
-
-    while let Some((g, w)) = gs.next() {
-        if g == "\x1B" {
-            // Skip to end of control sequence
-            gs.position(|g| g.0 == "m").unwrap();
-        } else {
-            count += w;
+pub fn start() {
+    ::std::thread::spawn(|| {
+        let stdin = ::std::io::stdin();
+        for ev in stdin.lock().keys() {
+            match ev {
+                Ok(k) => {
+                    ::tui::view::notify_input(k);
+                }
+                Err(e) => {
+                    ::VIEW.overlay("Input".to_owned(), e.to_string(), Some(color::Red));
+                }
+            };
         }
-    }
-
-    count as u16
+    });
 }

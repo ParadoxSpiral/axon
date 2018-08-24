@@ -16,7 +16,6 @@
 // along with Axon.  If not, see <http://www.gnu.org/licenses/>.
 
 extern crate chrono;
-extern crate crossbeam;
 extern crate futures;
 #[macro_use]
 extern crate lazy_static;
@@ -30,13 +29,11 @@ extern crate shellexpand;
 extern crate synapse_rpc;
 extern crate termion;
 extern crate tokio;
-// TODO: Once the websockets impl uses the new tokio, we can drop this
-extern crate tokio_core;
+extern crate tokio_tungstenite as ws;
 extern crate toml;
 extern crate unicode_segmentation;
 extern crate unicode_width;
 extern crate url;
-extern crate websocket;
 
 #[cfg(feature = "dbg")]
 #[cfg_attr(feature = "dbg", macro_use)]
@@ -46,17 +43,17 @@ extern crate slog_async;
 #[cfg(feature = "dbg")]
 extern crate slog_term;
 
-pub mod config;
+mod config;
+mod input;
 mod rpc;
 mod tui;
-pub mod utils;
+mod utils;
 
-use termion::input::TermRead;
+use tokio::prelude::*;
+use tokio::runtime::{Runtime, TaskExecutor};
 
 use config::CONFIG;
-use rpc::RpcContext;
-use tui::InputResult;
-use tui::View;
+use tui::view::View;
 
 #[cfg(feature = "dbg")]
 lazy_static! {
@@ -80,79 +77,36 @@ lazy_static! {
     static ref S_RPC: slog::Logger = (*SLOG_ROOT).new(o!(
         "RPC version" => format!("{}.{}", synapse_rpc::MAJOR_VERSION, synapse_rpc::MINOR_VERSION)));
     static ref S_VIEW: slog::Logger = (*SLOG_ROOT).new(o!("View" => true));
-    static ref S_IO: slog::Logger = (*SLOG_ROOT).new(o!("IO" => true));
+}
+
+// This is a bit hacky
+static mut INTERNAL_EXECUTOR: Option<TaskExecutor> = None;
+lazy_static! {
+    static ref EXECUTOR: &'static TaskExecutor = unsafe { INTERNAL_EXECUTOR.as_ref().unwrap() };
+    static ref VIEW: View = View::new();
 }
 
 fn main() {
-    let view = View::init();
-    let rpc = RpcContext::new();
+    let rt = Runtime::new().unwrap();
+    unsafe {
+        INTERNAL_EXECUTOR = Some(rt.executor());
+    }
 
     if CONFIG.autoconnect {
         #[cfg(feature = "dbg")]
-        trace!(*S_VIEW, "Autoconnecting");
-        rpc.start_init(
-            CONFIG.server.clone().unwrap(),
-            CONFIG.pass.clone().unwrap_or_else(|| "".to_owned()),
+        info!(*S_VIEW, "Autoconnecting");
+        rpc::start_connect(
+            &*CONFIG.server.clone().unwrap(),
+            CONFIG
+                .pass
+                .clone()
+                .as_ref()
+                .map(|p| &**p)
+                .unwrap_or_else(|| ""),
         );
     }
 
-    crossbeam::scope(|scope| {
-        // View worker
-        scope.spawn(|| {
-            #[cfg(feature = "dbg")]
-            trace!(*S_VIEW, "Entering loop");
-            view.render_until_death();
-        });
+    input::start();
 
-        // rpc worker
-        scope.spawn(|| {
-            #[cfg(feature = "dbg")]
-            trace!(*S_RPC, "Entering loop");
-            rpc.recv_until_death(&view);
-        });
-
-        // Input worker
-        scope.spawn(|| {
-            let stdin = ::std::io::stdin();
-            #[cfg(feature = "dbg")]
-            trace!(*S_IO, "Entering loop");
-            for ev in stdin.lock().keys() {
-                let res = if let Ok(k) = ev {
-                    // Pass input through components
-                    #[cfg(feature = "dbg")]
-                    {
-                        if view.logged_in() {
-                            debug!(*S_IO, "Handling {:?}", k);
-                        } else {
-                            debug!(*S_IO, "Handling key in LoginPanel");
-                        }
-                    }
-
-                    view.handle_input(&rpc, k)
-                } else {
-                    #[cfg(feature = "dbg")]
-                    crit!(*S_IO, "Fatal error: {}", ev.as_ref().unwrap_err());
-
-                    if view.logged_in() {
-                        rpc.disconnect();
-                    }
-                    rpc.disconnect();
-                    view.shutdown();
-
-                    panic!("Unrecoverable error: {:?}", ev.unwrap_err())
-                };
-
-                match res {
-                    InputResult::Close => {
-                        break;
-                    }
-                    InputResult::Rerender => {
-                        view.wake();
-                    }
-                    InputResult::Key(_) => {}
-                    _ => unreachable!(),
-                }
-            }
-        });
-    });
+    rt.shutdown_on_idle().wait().unwrap();
 }

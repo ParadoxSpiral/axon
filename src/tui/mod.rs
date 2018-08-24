@@ -14,31 +14,27 @@
 // along with Axon.  If not, see <http://www.gnu.org/licenses/>.
 
 pub mod panels;
-mod view;
+pub mod view;
 pub mod widgets;
-
-pub use self::view::View;
 
 use synapse_rpc::message::SMessage;
 use termion::event::Key;
 
-use rpc::RpcContext;
-
 pub trait Component: Renderable + HandleInput + HandleRpc {}
 
-pub trait Renderable {
+pub trait Renderable: Send {
     fn name(&self) -> String {
         "unnamed".to_owned()
     }
     fn render(&mut self, target: &mut Vec<u8>, width: u16, height: u16, x_off: u16, y_off: u16);
 }
 
-pub trait HandleInput {
-    fn input(&mut self, ctx: &RpcContext, k: Key, width: u16, height: u16) -> InputResult;
+pub trait HandleInput: Send {
+    fn input(&mut self, k: Key, width: u16, height: u16) -> InputResult;
 }
 
-pub trait HandleRpc {
-    fn rpc(&mut self, ctx: &RpcContext, msg: SMessage) -> bool;
+pub trait HandleRpc: Send {
+    fn rpc(&mut self, msg: SMessage) -> bool;
 }
 
 pub enum InputResult {

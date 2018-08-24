@@ -26,7 +26,6 @@ use std::mem::ManuallyDrop;
 use std::str;
 
 use super::{Component, HandleInput, HandleRpc, InputResult, Renderable};
-use rpc::RpcContext;
 use utils;
 use utils::align::{self, x, y};
 
@@ -37,8 +36,8 @@ pub enum Unit {
 
 pub struct VSplit<'a, L: 'a, R: 'a>
 where
-    L: BorrowMut<Renderable + 'a>,
-    R: BorrowMut<Renderable + 'a>,
+    L: BorrowMut<Renderable + 'a> + Send,
+    R: BorrowMut<Renderable + 'a> + Send,
 {
     left: L,
     right: R,
@@ -50,8 +49,8 @@ where
 
 impl<'a, L, R> VSplit<'a, L, R>
 where
-    L: BorrowMut<Renderable + 'a>,
-    R: BorrowMut<Renderable + 'a>,
+    L: BorrowMut<Renderable + 'a> + Send,
+    R: BorrowMut<Renderable + 'a> + Send,
 {
     pub fn new(
         left: L,
@@ -73,14 +72,14 @@ where
 
 impl<'a, L, R> Renderable for VSplit<'a, L, R>
 where
-    L: BorrowMut<Renderable + 'a>,
-    R: BorrowMut<Renderable + 'a>,
+    L: BorrowMut<Renderable + 'a> + Send,
+    R: BorrowMut<Renderable + 'a> + Send,
 {
     fn render(&mut self, target: &mut Vec<u8>, width: u16, height: u16, x_off: u16, y_off: u16) {
         // Draw left
         let left_w = match self.left_size {
             Unit::Lines(w) => w,
-            Unit::Percent(p) => (width as f32 * p).floor() as u16,
+            Unit::Percent(p) => (f32::from(width) * p).floor() as u16,
         };
         self.left
             .borrow_mut()
@@ -117,8 +116,8 @@ where
 
 pub struct HSplit<'a, T: 'a, B: 'a>
 where
-    T: BorrowMut<Renderable + 'a>,
-    B: BorrowMut<Renderable + 'a>,
+    T: BorrowMut<Renderable + 'a> + Send,
+    B: BorrowMut<Renderable + 'a> + Send,
 {
     top: T,
     bot: B,
@@ -130,8 +129,8 @@ where
 
 impl<'a, T: 'a, B: 'a> HSplit<'a, T, B>
 where
-    T: BorrowMut<Renderable + 'a>,
-    B: BorrowMut<Renderable + 'a>,
+    T: BorrowMut<Renderable + 'a> + Send,
+    B: BorrowMut<Renderable + 'a> + Send,
 {
     pub fn new(
         top: T,
@@ -153,8 +152,8 @@ where
 
 impl<'a, T: 'a, B: 'a> Renderable for HSplit<'a, T, B>
 where
-    T: BorrowMut<Renderable + 'a>,
-    B: BorrowMut<Renderable + 'a>,
+    T: BorrowMut<Renderable + 'a> + Send,
+    B: BorrowMut<Renderable + 'a> + Send,
 {
     fn name(&self) -> String {
         format!(
@@ -207,14 +206,14 @@ where
 
 pub struct BorrowedSameTabs<'a, T: 'a>
 where
-    T: Renderable + 'a,
+    T: Renderable + 'a + Send,
 {
     tabs: &'a mut [T],
     active_idx: usize,
 }
 impl<'a, T> BorrowedSameTabs<'a, T>
 where
-    T: Renderable + 'a,
+    T: Renderable + 'a + Send,
 {
     pub fn new(tabs: &'a mut [T], active: usize) -> BorrowedSameTabs<'a, T> {
         BorrowedSameTabs {
@@ -226,7 +225,7 @@ where
 
 impl<'a, T> Renderable for BorrowedSameTabs<'a, T>
 where
-    T: Renderable + 'a,
+    T: Renderable + 'a + Send,
 {
     fn render(&mut self, target: &mut Vec<u8>, width: u16, height: u16, x_off: u16, y_off: u16) {
         write!(target, "{}", cursor::Goto(x_off, y_off)).unwrap();
@@ -287,9 +286,9 @@ where
 
 pub struct BorrowedOverlay<'a, T: 'a, B: 'a, C: 'a>
 where
-    T: Renderable + ?Sized,
-    B: Renderable + ?Sized,
-    C: Color,
+    T: Renderable + ?Sized + Send,
+    B: Renderable + ?Sized + Send,
+    C: Color + Send + Sync,
 {
     top: &'a mut T,
     below: &'a mut B,
@@ -300,9 +299,9 @@ where
 
 impl<'a, T, B, C> BorrowedOverlay<'a, T, B, C>
 where
-    T: Renderable + ?Sized,
-    B: Renderable + ?Sized,
-    C: Color,
+    T: Renderable + ?Sized + Send,
+    B: Renderable + ?Sized + Send,
+    C: Color + Send + Sync,
 {
     pub fn new<J: Into<Option<&'a str>>>(
         top: &'a mut T,
@@ -311,24 +310,21 @@ where
         box_color: Option<&'a C>,
         name: J,
     ) -> BorrowedOverlay<'a, T, B, C> {
-        assert!(top_dimensions.0 > 0 && top_dimensions.1 > 0);
-        let name = name.into();
-        name.map(|n| assert!((n.len() as u16) < top_dimensions.0));
         BorrowedOverlay {
             top,
             below,
             top_dimensions,
             box_color,
-            name,
+            name: name.into(),
         }
     }
 }
 
 impl<'a, T, B, C> Renderable for BorrowedOverlay<'a, T, B, C>
 where
-    T: Renderable + ?Sized,
-    B: Renderable + ?Sized,
-    C: Color,
+    T: Renderable + ?Sized + Send,
+    B: Renderable + ?Sized + Send,
+    C: Color + Send + Sync,
 {
     fn render(&mut self, target: &mut Vec<u8>, width: u16, height: u16, x_off: u16, y_off: u16) {
         // Render lower layer
@@ -414,8 +410,8 @@ where
 
 pub struct OwnedOverlay<T, C>
 where
-    T: Component,
-    C: Color,
+    T: Component + Send,
+    C: Color + Send + Sync,
 {
     top: T,
     below: ManuallyDrop<Box<Component>>,
@@ -425,8 +421,8 @@ where
 }
 impl<T, C> OwnedOverlay<T, C>
 where
-    T: Component,
-    C: Color,
+    T: Component + Send,
+    C: Color + Send + Sync,
 {
     pub fn new<I: Into<Option<C>>, J: Into<Option<String>>>(
         top: T,
@@ -448,15 +444,14 @@ where
 
 impl<T, C> Component for OwnedOverlay<T, C>
 where
-    T: Component,
-    C: Color,
-{
-}
+    T: Component + Send,
+    C: Color + Send + Sync,
+{}
 
 impl<T, C> Renderable for OwnedOverlay<T, C>
 where
-    T: Component,
-    C: Color,
+    T: Component + Send,
+    C: Color + Send + Sync,
 {
     fn render(&mut self, target: &mut Vec<u8>, width: u16, height: u16, x_off: u16, y_off: u16) {
         BorrowedOverlay::<_, _, C>::new(
@@ -471,22 +466,22 @@ where
 
 impl<T, C> HandleRpc for OwnedOverlay<T, C>
 where
-    T: Component,
-    C: Color,
+    T: Component + Send,
+    C: Color + Send + Sync,
 {
-    fn rpc(&mut self, ctx: &RpcContext, msg: SMessage) -> bool {
-        self.top.rpc(ctx, msg.clone());
-        self.below.rpc(ctx, msg)
+    fn rpc(&mut self, msg: SMessage) -> bool {
+        self.top.rpc(msg.clone());
+        self.below.rpc(msg)
     }
 }
 
 impl<T, C> HandleInput for OwnedOverlay<T, C>
 where
-    T: Component,
-    C: Color,
+    T: Component + Send,
+    C: Color + Send + Sync,
 {
-    fn input(&mut self, ctx: &RpcContext, k: Key, w: u16, h: u16) -> InputResult {
-        match self.top.input(ctx, k, w, h) {
+    fn input(&mut self, k: Key, w: u16, h: u16) -> InputResult {
+        match self.top.input(k, w, h) {
             InputResult::Close => InputResult::ReplaceWith(unsafe {
                 Box::from_raw((&mut **self.below) as *mut Component)
             }),
@@ -497,9 +492,9 @@ where
 
 pub struct Text<T, AX, AY>
 where
-    T: Borrow<str>,
-    AX: x::Align,
-    AY: y::Align,
+    T: Borrow<str> + Send,
+    AX: x::Align + Send,
+    AY: y::Align + Send,
 {
     do_goto: bool,
     content: T,
@@ -509,9 +504,9 @@ where
 
 impl<T, AX, AY> Text<T, AX, AY>
 where
-    T: Borrow<str>,
-    AX: x::Align,
-    AY: y::Align,
+    T: Borrow<str> + Send,
+    AX: x::Align + Send,
+    AY: y::Align + Send,
 {
     pub fn new(do_goto: bool, t: T) -> Text<T, AX, AY> {
         Text {
@@ -535,9 +530,9 @@ macro_rules! do_write {
 
 impl<T, AX, AY> Renderable for Text<T, AX, AY>
 where
-    T: Borrow<str>,
-    AX: x::Align,
-    AY: y::Align,
+    T: Borrow<str> + Send,
+    AX: x::Align + Send,
+    AY: y::Align + Send,
 {
     fn render(&mut self, target: &mut Vec<u8>, width: u16, height: u16, x_off: u16, y_off: u16) {
         let content = self.content.borrow();
@@ -558,82 +553,90 @@ where
             let mut chunks = content
                 .graphemes(true)
                 // Version of .chunks that preserves control codes
-                .fold((0, 0, false, Vec::new(), vec![String::new()]), |mut acc, g| {
-                    // idx, crr_cnt, inside_esc, esc, str
-                    // FIXME: see utils::count_without_styling
-                    if g == "\x1B" {
-                        acc.2 = true;
-                        acc.3.push(String::from("\x1B"));
-                        acc.4[acc.0].push('\x1B');
-                    } else if acc.2 && g != "m" {
-                        acc.3[acc.0].push_str(g);
-                        acc.4[acc.0].push_str(g);
-                    } else if acc.2 && g == "m" {
-                        acc.2 = false;
-                        let mut r_idx = 0;
-                        if acc.3[acc.0] == "\x1B[m" {
-                            // Reset styling
-                            acc.3.reverse();
-                            for (i, c) in acc.3.iter().skip(1).enumerate() {
-                                if !c.contains(';') {
-                                    r_idx = acc.3.len() - 2 - i;
-                                    break;
-                                }
-                            }
-                        } else if acc.3[acc.0] == "\x1B[39m" {
-                            // Reset fg color
-                            acc.3.reverse();
-                            for (i, c) in acc.3.iter().skip(1).enumerate() {
-                                if c.starts_with("38;") {
-                                    r_idx = acc.3.len() - 2 - i;
-                                    break;
-                                }
-                            }
-                        } else if acc.3[acc.0] == "\x1B[49m" {
-                            // Reset bg color
-                            acc.3.reverse();
-                            for (i, c) in acc.3.iter().skip(1).enumerate() {
-                                if c.starts_with("48;") {
-                                    r_idx = acc.3.len() - 2 - i;
-                                    break;
-                                }
-                            }
-                        } else {
-                            acc.3[acc.0].push('m');
-                            acc.4[acc.0].push('m');
-                            return acc;
-                        }
-                        acc.3.reverse();
-                        let l = acc.3.len();
-                        acc.3.remove(l - 1);
-                        acc.3.remove(r_idx);
-                    } else {
-                        let l = utils::count(g);
-                        if acc.1 + l >= width as _ {
-                            assert!(!acc.2);
-                            acc.3.reverse();
-                            acc.4.push(String::new());
-                            for esc in &acc.3 {
-                                if esc.starts_with("\x1B[38;") {
-                                    acc.4[acc.0].push_str(&format!("{}", color::Fg(color::Reset)));
-                                } else if esc.starts_with("\x1B[48;") {
-                                    acc.4[acc.0].push_str(&format!("{}", color::Bg(color::Reset)));
-                                } else {
-                                    acc.4[acc.0].push_str(&format!("{}", style::Reset));
-                                }
-                                acc.4[acc.0+1].push_str(esc);
-                            }
-                            acc.3.reverse();
-                            acc.0 +=1;
-                            acc.1 = l;
+                .fold(
+                    (0, 0, false, Vec::new(), vec![String::new()]),
+                    |mut acc, g| {
+                        // idx, crr_cnt, inside_esc, esc, str
+                        // FIXME: see utils::count_without_styling
+                        if g == "\x1B" {
+                            acc.2 = true;
+                            acc.3.push(String::from("\x1B"));
+                            acc.4[acc.0].push('\x1B');
+                        } else if acc.2 && g != "m" {
+                            acc.3[acc.0].push_str(g);
                             acc.4[acc.0].push_str(g);
+                        } else if acc.2 && g == "m" {
+                            acc.2 = false;
+                            let mut r_idx = 0;
+                            if acc.3[acc.0] == "\x1B[m" {
+                                // Reset styling
+                                acc.3.reverse();
+                                for (i, c) in acc.3.iter().skip(1).enumerate() {
+                                    if !c.contains(';') {
+                                        r_idx = acc.3.len() - 2 - i;
+                                        break;
+                                    }
+                                }
+                            } else if acc.3[acc.0] == "\x1B[39m" {
+                                // Reset fg color
+                                acc.3.reverse();
+                                for (i, c) in acc.3.iter().skip(1).enumerate() {
+                                    if c.starts_with("38;") {
+                                        r_idx = acc.3.len() - 2 - i;
+                                        break;
+                                    }
+                                }
+                            } else if acc.3[acc.0] == "\x1B[49m" {
+                                // Reset bg color
+                                acc.3.reverse();
+                                for (i, c) in acc.3.iter().skip(1).enumerate() {
+                                    if c.starts_with("48;") {
+                                        r_idx = acc.3.len() - 2 - i;
+                                        break;
+                                    }
+                                }
+                            } else {
+                                acc.3[acc.0].push('m');
+                                acc.4[acc.0].push('m');
+                                return acc;
+                            }
+                            acc.3.reverse();
+                            let l = acc.3.len();
+                            acc.3.remove(l - 1);
+                            acc.3.remove(r_idx);
                         } else {
-                            acc.1 += l;
-                            acc.4[acc.0].push_str(g);
+                            let l = utils::count(g);
+                            if acc.1 + l >= width as _ {
+                                assert!(!acc.2);
+                                acc.3.reverse();
+                                acc.4.push(String::new());
+                                for esc in &acc.3 {
+                                    if esc.starts_with("\x1B[38;") {
+                                        acc.4[acc.0]
+                                            .push_str(&format!("{}", color::Fg(color::Reset)));
+                                    } else if esc.starts_with("\x1B[48;") {
+                                        acc.4[acc.0]
+                                            .push_str(&format!("{}", color::Bg(color::Reset)));
+                                    } else {
+                                        acc.4[acc.0].push_str(&format!("{}", style::Reset));
+                                    }
+                                    acc.4[acc.0 + 1].push_str(esc);
+                                }
+                                acc.3.reverse();
+                                acc.0 += 1;
+                                acc.1 = l;
+                                acc.4[acc.0].push_str(g);
+                            } else {
+                                acc.1 += l;
+                                acc.4[acc.0].push_str(g);
+                            }
                         }
-                    }
-                    acc
-                }).4.into_iter().filter(|s| utils::count_without_styling(s) != 0).peekable();
+                        acc
+                    },
+                ).4
+                .into_iter()
+                .filter(|s| utils::count_without_styling(s) != 0)
+                .peekable();
             let mut i = 0;
             while let Some(chunk) = chunks.next() {
                 if let Some(n_chunk) = chunks.peek() {
@@ -695,12 +698,12 @@ pub struct Input {
 impl Input {
     pub fn from<T: Into<Option<usize>>>(content: String, pos: T) -> Input {
         Input {
-            pos: pos.into()
+            pos: pos
+                .into()
                 .and_then(|pos| {
                     assert!(pos > 0);
                     Some(pos)
-                })
-                .unwrap_or_else(|| content.graphemes(true).count() + 1),
+                }).unwrap_or_else(|| content.graphemes(true).count() + 1),
             content,
         }
     }
@@ -737,7 +740,8 @@ impl Input {
         }
     }
     pub fn push(&mut self, c: char) {
-        let offset = self.content
+        let offset = self
+            .content
             .graphemes(true)
             .take(self.pos - 1)
             .collect::<String>()
@@ -748,7 +752,8 @@ impl Input {
     }
     pub fn backspace(&mut self) {
         if self.pos > 1 {
-            self.content = self.content
+            self.content = self
+                .content
                 .graphemes(true)
                 .take(self.pos - 2)
                 .chain(self.content.graphemes(true).skip(self.pos - 2).skip(1))
@@ -758,7 +763,8 @@ impl Input {
     }
     pub fn delete(&mut self) {
         if !self.content.is_empty() && self.pos <= self.content.graphemes(true).count() {
-            self.content = self.content
+            self.content = self
+                .content
                 .graphemes(true)
                 .take(self.pos - 1)
                 .chain(self.content.graphemes(true).skip(self.pos - 1).skip(1))
@@ -779,7 +785,8 @@ impl Input {
             // FIXME: allocs less than ideal
             format!(
                 "{}{}{}{}{}",
-                &self.content
+                &self
+                    .content
                     .graphemes(true)
                     .take(self.pos - 1)
                     .collect::<String>(),
@@ -794,7 +801,7 @@ impl Input {
                     " ".into()
                 },
                 style::NoUnderline,
-                if self.pos + 1 <= len {
+                if self.pos < len {
                     self.content
                         .graphemes(true)
                         .skip(self.pos)
@@ -848,7 +855,7 @@ impl PasswordInput {
                     " "
                 },
                 style::NoUnderline,
-                if self.pos + 1 <= len {
+                if self.pos < len {
                     &stars[self.pos..]
                 } else {
                     ""
@@ -863,13 +870,13 @@ impl PasswordInput {
 
 pub struct RenderFn<F>
 where
-    F: Fn(&mut Vec<u8>, u16, u16, u16, u16),
+    F: Fn(&mut Vec<u8>, u16, u16, u16, u16) + Send,
 {
     ct: F,
 }
 impl<F> RenderFn<F>
 where
-    F: Fn(&mut Vec<u8>, u16, u16, u16, u16),
+    F: Fn(&mut Vec<u8>, u16, u16, u16, u16) + Send,
 {
     pub fn new(fun: F) -> RenderFn<F> {
         RenderFn { ct: fun }
@@ -877,7 +884,7 @@ where
 }
 impl<F> Renderable for RenderFn<F>
 where
-    F: Fn(&mut Vec<u8>, u16, u16, u16, u16),
+    F: Fn(&mut Vec<u8>, u16, u16, u16, u16) + Send,
 {
     fn render(&mut self, target: &mut Vec<u8>, width: u16, height: u16, x_off: u16, y_off: u16) {
         (self.ct)(target, width, height, x_off, y_off);
@@ -886,14 +893,16 @@ where
 
 pub struct RenderStateFn<F, T>
 where
-    F: Fn(&mut Vec<u8>, u16, u16, u16, u16, &mut T),
+    F: Fn(&mut Vec<u8>, u16, u16, u16, u16, &mut T) + Send,
+    T: Send,
 {
     ct: F,
     state: T,
 }
 impl<F, T> RenderStateFn<F, T>
 where
-    F: Fn(&mut Vec<u8>, u16, u16, u16, u16, &mut T),
+    F: Fn(&mut Vec<u8>, u16, u16, u16, u16, &mut T) + Send,
+    T: Send,
 {
     pub fn new(fun: F, state: T) -> RenderStateFn<F, T> {
         RenderStateFn { ct: fun, state }
@@ -901,7 +910,8 @@ where
 }
 impl<F, T> Renderable for RenderStateFn<F, T>
 where
-    F: Fn(&mut Vec<u8>, u16, u16, u16, u16, &mut T),
+    F: Fn(&mut Vec<u8>, u16, u16, u16, u16, &mut T) + Send,
+    T: Send,
 {
     fn render(&mut self, target: &mut Vec<u8>, width: u16, height: u16, x_off: u16, y_off: u16) {
         (self.ct)(target, width, height, x_off, y_off, &mut self.state);
@@ -925,11 +935,7 @@ where
     }
 }
 
-impl<'t, T> Component for CloseOnInput<'t, T>
-where
-    T: Renderable + HandleRpc,
-{
-}
+impl<'t, T> Component for CloseOnInput<'t, T> where T: Renderable + HandleRpc {}
 
 impl<'t, T> Renderable for CloseOnInput<'t, T>
 where
@@ -944,8 +950,8 @@ impl<'t, T> HandleInput for CloseOnInput<'t, T>
 where
     T: Renderable + HandleRpc,
 {
-    fn input(&mut self, _: &RpcContext, k: Key, _: u16, _: u16) -> InputResult {
-        if self.trigger.len() == 0 || self.trigger.contains(&k) {
+    fn input(&mut self, k: Key, _: u16, _: u16) -> InputResult {
+        if self.trigger.is_empty() || self.trigger.contains(&k) {
             InputResult::Close
         } else {
             InputResult::Rerender
@@ -957,8 +963,8 @@ impl<'t, T> HandleRpc for CloseOnInput<'t, T>
 where
     T: Renderable + HandleRpc,
 {
-    fn rpc(&mut self, ctx: &RpcContext, msg: SMessage) -> bool {
-        self.content.rpc(ctx, msg)
+    fn rpc(&mut self, msg: SMessage) -> bool {
+        self.content.rpc(msg)
     }
 }
 
@@ -991,7 +997,7 @@ impl<T> HandleRpc for IgnoreRpc<T>
 where
     T: Renderable,
 {
-    fn rpc(&mut self, _: &RpcContext, _: SMessage) -> bool {
+    fn rpc(&mut self, _: SMessage) -> bool {
         false
     }
 }

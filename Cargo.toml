@@ -1,30 +1,28 @@
 [package]
 name = "axon"
-version = "0.1.0"
+version = "0.2.0"
 authors = ["Jonathan Schleußer <paradoxspiral@riseup.net>"]
 
 [dependencies]
 chrono = "0.4"
-crossbeam = "0.3"
 futures = "0.1"
 lazy_static = "1"
 natord = "1"
 parking_lot = "0.6"
-synapse-rpc = "0.1.15"
+synapse-rpc = "=0.1.20"
 serde = "1"
 serde_derive = "1"
 serde_json = "1"
 shellexpand = "1"
 termion = "1"
 tokio = "0.1"
-tokio-core = "0.1"
+tokio-tungstenite = "0.6"
 toml = "0.4"
-websocket = "0.20"
 unicode-segmentation = "1"
 unicode-width = "0.1"
 url = "1"
 
-slog = { version = "2", optional = true, features = ["max_level_trace", "release_max_level_warn"] }
+slog = { version = "2", optional = true, features = ["max_level_trace", "release_max_level_trace"] }
 slog-term = { version = "2", optional = true }
 slog-async = { version = "2", optional = true }
 
@@ -32,6 +30,5 @@ slog-async = { version = "2", optional = true }
 dbg = ["slog", "slog-term", "slog-async"]
 
 [profile.release]
-debug = true
 lto = true
 opt-level = 3
