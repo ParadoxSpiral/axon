@@ -689,6 +689,7 @@ where
     }
 }
 
+// FIXME: The grapheme usage is quite allocation heavy
 #[derive(Clone)]
 pub struct Input {
     content: String,
@@ -782,7 +783,6 @@ impl Input {
                 style::NoUnderline,
             )
         } else {
-            // FIXME: allocs less than ideal
             format!(
                 "{}{}{}{}{}",
                 &self
@@ -841,7 +841,7 @@ impl ::std::ops::DerefMut for PasswordInput {
 impl PasswordInput {
     pub fn format_active(&self) -> String {
         let len = self.content.graphemes(true).count();
-        let stars = (0..len).fold("".to_owned(), |s, _| s + "*");
+        let stars = "*".repeat(len);
         if self.pos > len {
             format!("{}{} {}", &stars, style::Underline, style::NoUnderline,)
         } else {
@@ -864,7 +864,7 @@ impl PasswordInput {
         }
     }
     pub fn format_inactive(&self) -> String {
-        (0..self.content.graphemes(true).count()).fold("".to_owned(), |s, _| s + "*")
+        "*".repeat(self.content.graphemes(true).count())
     }
 }
 
