@@ -1021,7 +1021,7 @@ impl Renderable for TorrentDetailsPanel {
             widgets::Text::<_, align::x::Left, align::y::Top>::new(
                 true,
                 format!(
-                    "{}: {}    Picker: {:?}    Created: {} ago    Modified: {} ago",
+                    "{}, {}    Picker: {:?}    Created: {} ago    Modified: {} ago",
                     if self.torr.private {
                         "Private"
                     } else {
@@ -1044,12 +1044,12 @@ impl Renderable for TorrentDetailsPanel {
                     self.torr
                         .throttle_up
                         .map(|t| if t == -1 { "∞".into() } else { t.fmt_size() })
-                        .unwrap_or_else(|| "global".into()),
+                        .unwrap_or_else(|| "*".into()),
                     self.torr.rate_down.fmt_size(),
                     self.torr
                         .throttle_down
                         .map(|t| if t == -1 { "∞".into() } else { t.fmt_size() })
-                        .unwrap_or_else(|| "global".into()),
+                        .unwrap_or_else(|| "*".into()),
                     if self.torr.transferred_down == 0 {
                         1.
                     } else {
