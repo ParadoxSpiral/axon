@@ -104,6 +104,9 @@ fn main() {
                 .map(|p| &**p)
                 .unwrap_or_else(|| ""),
         );
+    } else {
+        // Initialize the lazily initialized View, if it wasn't be a call to connect
+        &*VIEW;
     }
 
     input::start();
