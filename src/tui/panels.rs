@@ -430,9 +430,10 @@ impl HandleInput for MainPanel {
                 let i = self.details.0;
                 // This is ok, because details only focused when not empty
                 self.details.1.remove(i);
-                self.details.0.saturating_sub(1);
                 if self.details.1.is_empty() {
                     self.focus = Focus::Torrents;
+                } else if i == self.details.1.len() {
+                    self.details.0 -= 1;
                 }
             }
 
