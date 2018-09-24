@@ -528,6 +528,8 @@ macro_rules! do_write {
     };
 }
 
+// TODO: This needs a major overhaul, it's too ugly and complex, also no good multiline support
+// FIXME: If the width is 2. weird stuff happens
 impl<T, AX, AY> Renderable for Text<T, AX, AY>
 where
     T: Borrow<str> + Send,
@@ -535,6 +537,10 @@ where
     AY: y::Align + Send,
 {
     fn render(&mut self, target: &mut Vec<u8>, width: u16, height: u16, x_off: u16, y_off: u16) {
+        if width <= 1 || height == 0 {
+            return;
+        }
+
         let content = self.content.borrow();
         let x_off = x_off + match AX::align_offset(&[content], width) {
             x::Alignment::Single(x) => x,
@@ -554,88 +560,80 @@ where
                 .graphemes(true)
                 // Version of .chunks that preserves control codes
                 .fold(
-                    (0, 0, false, Vec::new(), vec![String::new()]),
+                    // idx of control, idx of str, current str len, inside_esc, control code, str
+                    (0, 0, 0, false, Vec::new(), vec![String::new()]),
                     |mut acc, g| {
-                        // idx, crr_cnt, inside_esc, esc, str
-                        // FIXME: see utils::count_without_styling
                         if g == "\x1B" {
-                            acc.2 = true;
-                            acc.3.push(String::from("\x1B"));
-                            acc.4[acc.0].push('\x1B');
-                        } else if acc.2 && g != "m" {
-                            acc.3[acc.0].push_str(g);
+                            // Control code starts
+
+                            acc.3 = true;
+                            acc.4.push(String::from("\x1B"));
+                            acc.5[acc.1].push('\x1B');
+                        } else if acc.3 && g != "m" {
+                            // Control code content
+
                             acc.4[acc.0].push_str(g);
-                        } else if acc.2 && g == "m" {
-                            acc.2 = false;
-                            let mut r_idx = 0;
-                            if acc.3[acc.0] == "\x1B[m" {
-                                // Reset styling
-                                acc.3.reverse();
-                                for (i, c) in acc.3.iter().skip(1).enumerate() {
-                                    if !c.contains(';') {
-                                        r_idx = acc.3.len() - 2 - i;
-                                        break;
+                            acc.5[acc.1].push_str(g);
+                        } else if acc.3 && g == "m" {
+                            // Control code stops
+
+                            acc.3 = false;
+                            match &*acc.4[acc.0] {
+                                // Reset styling, or fg color, or bg color
+                                "\x1B[m" | "\x1B[39m" | "\x1B49m" => {
+                                    let mut r_idx = 0;
+                                    for (i, c) in acc.4.iter().skip(1).enumerate() {
+                                        if !c.contains(';')
+                                            || c.starts_with("38;")
+                                            || c.starts_with("48;")
+                                        {
+                                            r_idx = acc.4.len() - 2 - i;
+                                            break;
+                                        }
                                     }
+
+                                    let l = acc.4.len();
+                                    acc.4.remove(l - 1);
+                                    acc.4.remove(r_idx);
                                 }
-                            } else if acc.3[acc.0] == "\x1B[39m" {
-                                // Reset fg color
-                                acc.3.reverse();
-                                for (i, c) in acc.3.iter().skip(1).enumerate() {
-                                    if c.starts_with("38;") {
-                                        r_idx = acc.3.len() - 2 - i;
-                                        break;
-                                    }
+                                _ => {
+                                    acc.4[acc.0].push('m');
+                                    acc.5[acc.1].push('m');
                                 }
-                            } else if acc.3[acc.0] == "\x1B[49m" {
-                                // Reset bg color
-                                acc.3.reverse();
-                                for (i, c) in acc.3.iter().skip(1).enumerate() {
-                                    if c.starts_with("48;") {
-                                        r_idx = acc.3.len() - 2 - i;
-                                        break;
-                                    }
-                                }
-                            } else {
-                                acc.3[acc.0].push('m');
-                                acc.4[acc.0].push('m');
-                                return acc;
                             }
-                            acc.3.reverse();
-                            let l = acc.3.len();
-                            acc.3.remove(l - 1);
-                            acc.3.remove(r_idx);
                         } else {
+                            // No control code
+
                             let l = utils::count(g);
-                            if acc.1 + l >= width as _ {
-                                assert!(!acc.2);
-                                acc.3.reverse();
-                                acc.4.push(String::new());
-                                for esc in &acc.3 {
+                            if acc.2 + l >= width as _ {
+                                acc.5.push(String::new());
+                                acc.4.reverse();
+                                for esc in acc.4.drain(..) {
                                     if esc.starts_with("\x1B[38;") {
-                                        acc.4[acc.0]
+                                        acc.5[acc.1]
                                             .push_str(&format!("{}", color::Fg(color::Reset)));
                                     } else if esc.starts_with("\x1B[48;") {
-                                        acc.4[acc.0]
+                                        acc.5[acc.1]
                                             .push_str(&format!("{}", color::Bg(color::Reset)));
                                     } else {
-                                        acc.4[acc.0].push_str(&format!("{}", style::Reset));
+                                        acc.5[acc.1].push_str(&format!("{}", style::Reset));
                                     }
-                                    acc.4[acc.0 + 1].push_str(esc);
+                                    acc.5[acc.1 + 1].push_str(&esc);
                                 }
-                                acc.3.reverse();
-                                acc.0 += 1;
-                                acc.1 = l;
-                                acc.4[acc.0].push_str(g);
+                                acc.0 = 0;
+
+                                acc.1 += 1;
+                                acc.5[acc.1].push_str(g);
+                                acc.2 = l;
                             } else {
-                                acc.1 += l;
-                                acc.4[acc.0].push_str(g);
+                                acc.2 += l;
+                                acc.5[acc.1].push_str(g);
                             }
                         }
                         acc
                     },
-                ).4
+                ).5
                 .into_iter()
-                .filter(|s| utils::count_without_styling(s) != 0)
                 .peekable();
             let mut i = 0;
             while let Some(chunk) = chunks.next() {
