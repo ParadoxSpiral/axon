@@ -587,7 +587,7 @@ impl Renderable for MainPanel {
                             .map(|t| if t == -1 { "∞".into() } else { t.fmt_size() })
                             .unwrap_or_else(|| "*".into()),
                         if t.transferred_down == 0 {
-                            1.
+                            0.
                         } else {
                             t.transferred_up as f32 / t.transferred_down as f32
                         },
