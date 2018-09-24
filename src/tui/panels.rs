@@ -457,7 +457,8 @@ impl HandleInput for MainPanel {
 
 impl Renderable for MainPanel {
     fn render(&mut self, target: &mut Vec<u8>, width: u16, height: u16, x_off: u16, y_off: u16) {
-        // If the display got downsized, we need to tighten the torrent selection
+        // FIXME: If the window got upsized, expand list selection if selected close to bottom
+        // If the window got downsized, we need to tighten the torrent selection
         let d = self.torrents.1 - self.torrents.0;
         let sub = if self.details.1.is_empty() { 0 } else { 6 };
         // - 2 because of the server footer, -1 because of 1-0 index conversion
@@ -471,7 +472,8 @@ impl Renderable for MainPanel {
             let mut width_throttle_up = 0;
             let mut width_throttle_down = 0;
             let mut width_ratio = 0;
-            for t in self.torrents
+            for t in self
+                .torrents
                 .2
                 .iter()
                 .skip(self.torrents.0)
@@ -597,9 +599,9 @@ impl Renderable for MainPanel {
                     ),
                 ).render(
                     target,
-                    width_right as u16,
+                    cmp::min(width_right as u16, width),
                     1,
-                    x + (width - width_right as u16),
+                    x + width.saturating_sub(width_right as u16),
                     y + i as u16,
                 );
             }
