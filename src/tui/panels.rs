@@ -553,6 +553,13 @@ impl Renderable for MainPanel {
                     _ => ("".into(), "".into()),
                 };
 
+                let (render_stats, width_left) =
+                    if width.saturating_sub(width_right as u16 + 1) < width / 3 {
+                        (false, width)
+                    } else {
+                        (true, width.saturating_sub(width_right as u16 + 1))
+                    };
+
                 widgets::Text::<_, align::x::Left, align::y::Top>::new(
                     true,
                     format!(
@@ -561,16 +568,11 @@ impl Renderable for MainPanel {
                         &**t.name.as_ref().unwrap_or_else(|| &t.path),
                         c_e
                     ),
-                ).render(
-                    target,
-                    width.saturating_sub(width_right as u16 + 1),
-                    1,
-                    x,
-                    y + i as u16,
-                );
-                widgets::Text::<_, align::x::Right, align::y::Top>::new(
-                    true,
-                    format!(
+                ).render(target, width_left, 1, x, y + i as u16);
+                if render_stats {
+                    widgets::Text::<_, align::x::Right, align::y::Top>::new(
+                        true,
+                        format!(
                         "{}{: >3}% {: ^w_status$} {: >10}[{: ^w_tu$}]↑ {: >10}[{: ^w_td$}]↓   \
                          {: >w_rat$.2}  {: >10}↑  {: >10}↓{}",
                         c_s,
@@ -597,13 +599,14 @@ impl Renderable for MainPanel {
                         w_td = width_throttle_down,
                         w_rat = width_ratio,
                     ),
-                ).render(
-                    target,
-                    cmp::min(width_right as u16, width),
-                    1,
-                    x + width.saturating_sub(width_right as u16),
-                    y + i as u16,
-                );
+                    ).render(
+                        target,
+                        cmp::min(width_right as u16, width),
+                        1,
+                        x + width.saturating_sub(width_right as u16),
+                        y + i as u16,
+                    );
+                }
             }
             if self.filter_disp {
                 widgets::Text::<_, align::x::Left, align::y::Top>::new(
