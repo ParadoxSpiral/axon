@@ -235,10 +235,6 @@ impl HandleInput for MainPanel {
                 self.filter.reset();
                 self.filter_disp = false;
             }
-            (Key::Ctrl('f'), _) => {
-                self.focus = Focus::Filter;
-                self.filter_disp = true;
-            }
 
             (Key::Esc, Focus::Filter) => {
                 self.focus = Focus::Torrents;
@@ -322,9 +318,7 @@ impl HandleInput for MainPanel {
             }
 
             // Key::Char
-            (Key::Char('\n'), Focus::Torrents) if self.filter_disp => {
-                self.focus = Focus::Filter;
-            }
+            (Key::Char('\n'), Focus::Torrents) => unimplemented!("OPEN DIR"),
 
             (Key::Char('d'), Focus::Torrents) if !self.torrents.2.is_empty() => {
                 if let Some(pos) = self
@@ -415,6 +409,13 @@ impl HandleInput for MainPanel {
                     )
                         as Box<Component>))
                 }).unwrap_or(InputResult::Key(Key::Char('e')));
+            }
+
+            (Key::Char('f'), Focus::Torrents) => {
+                self.focus = Focus::Filter;
+                if !self.filter_disp {
+                    self.filter_disp = true;
+                }
             }
 
             (Key::Char('J'), Focus::Torrents) if !self.details.1.is_empty() => {

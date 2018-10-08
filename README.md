@@ -5,20 +5,21 @@ The synapse TUI client
 Note: Currently termion (the underlying TUI library) does not respect terminfo and uses ANSI color codes ([#106](https://github.com/ticki/termion/issues/106)).
 
 ## Keybindings
+- `e` display errors of the currently selected torrent
 - `hjkl` movement, `HJKL` switch focus
 - `C-q` disconnects from the current server, or closes axon when in the login panel
-- `e` display errors of the currently selected torrent
 
 Torrent panel:
-- `C-f` opens the filter input
-- `\n` focuses the filter input
-- `d` opens the selected torrents' details
+- `<PgUp>/<PgDown>` scrolls by one panel height
+- `<ENTER>` opens selected torrent's directory
+- `d` opens the selected torrent's details
+- `f` opens/focuses the filter input
+- `l` opens the rate limit panel
 - `t` toggles displayal of the list of trackers
-- `PgUp/Down` scrolls by one panel height
 
 Filter input:
-- `esc` defocuses
-- `C-f` closes
+- `<ESC>` defocuses
+- `C-f` removes the filter
 - `C-s` cycles filtering mode (case sensitive, case insentive)
 
 Filter specifiers:
@@ -30,6 +31,10 @@ Every word starting with a specifier `[name][sign][content]` refines the criteri
 
 Torrent details:
 - `q` closes the current details panel
+
+Limits:
+- `<ENTER>` Commit limits and close panel
+- `<ESC>` Forget limits and close panel
 
 ## Configuration
 The config file is searched for at `$XDG_CONFIG_HOME/axon/conf.toml` and `~/.config/axon/conf.toml`.
