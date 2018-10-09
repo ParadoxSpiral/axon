@@ -94,7 +94,8 @@ pub fn start_connect(srv: &str, pass: &str) {
                     },
                     Some(color::Red),
                 )
-            }).and_then(move |(stream, _)| {
+            })
+            .and_then(move |(stream, _)| {
                 #[cfg(feature = "dbg")]
                 trace!(*::S_RPC, "RPC connected");
 
@@ -108,7 +109,8 @@ pub fn start_connect(srv: &str, pass: &str) {
                     stream
                         .map_err(|e| {
                             ::VIEW.overlay("RPC".to_owned(), e.to_string(), Some(color::Red))
-                        }).select(
+                        })
+                        .select(
                             future::poll_fn(move || {
                                 let mut waker = WAKER.1.lock();
                                 loop {
@@ -151,8 +153,10 @@ pub fn start_connect(srv: &str, pass: &str) {
                                         }
                                     }
                                 }
-                            }).into_stream(),
-                        ).for_each(|msg| match msg {
+                            })
+                            .into_stream(),
+                        )
+                        .for_each(|msg| match msg {
                             Message::Ping(p) => Ok(send_raw(Message::Pong(p))),
                             Message::Text(s) => match serde_json::from_str::<SMessage>(&s) {
                                 Err(e) => Err(::VIEW.overlay(
@@ -216,7 +220,8 @@ pub fn start_connect(srv: &str, pass: &str) {
                                 },
                             },
                             _ => unreachable!(),
-                        }).map_err(move |_| {
+                        })
+                        .map_err(move |_| {
                             ::VIEW.connection_close();
 
                             SERIAL.store(0, Ordering::Release);

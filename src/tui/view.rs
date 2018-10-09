@@ -121,7 +121,8 @@ impl View {
                 }
 
                 Ok(Async::NotReady)
-            }).then(|v| {
+            })
+            .then(|v| {
                 #[cfg(feature = "dbg")]
                 debug!(*::S_VIEW, "View finishing");
                 v
@@ -181,20 +182,22 @@ impl View {
 
     fn handle_input(&self, ct: &mut Box<Component>, k: Key) -> InputResult {
         match k {
-            Key::Ctrl('q') => if self.logged_in.load(Ordering::Acquire) {
-                #[cfg(feature = "dbg")]
-                debug!(*::S_VIEW, "Disconnecting");
+            Key::Ctrl('q') => {
+                if self.logged_in.load(Ordering::Acquire) {
+                    #[cfg(feature = "dbg")]
+                    debug!(*::S_VIEW, "Disconnecting");
 
-                rpc::disconnect();
-                self.internal_connection_close(ct);
+                    rpc::disconnect();
+                    self.internal_connection_close(ct);
 
-                InputResult::Rerender
-            } else {
-                #[cfg(feature = "dbg")]
-                debug!(*::S_VIEW, "Closing");
+                    InputResult::Rerender
+                } else {
+                    #[cfg(feature = "dbg")]
+                    debug!(*::S_VIEW, "Closing");
 
-                InputResult::Close
-            },
+                    InputResult::Close
+                }
+            }
             _ => {
                 let s = termion::terminal_size().unwrap_or((0, 0));
                 match ct.input(k, s.0, s.1) {

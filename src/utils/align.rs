@@ -42,7 +42,8 @@ pub mod x {
                     l,
                     cursor::Left(count_without_styling(l) as u16),
                     cursor::Down(1)
-                ).unwrap();
+                )
+                .unwrap();
             }
         }
         fn align_offset(_: &[&str], _: u16) -> Alignment {

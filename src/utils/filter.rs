@@ -95,63 +95,69 @@ impl Filter {
             }
 
             match &w[..1] {
-                "t" => if &w[1..2] == ":" {
-                    criteria.push(Criterion {
-                        field: "tracker_urls".into(),
-                        op: Operation::Has,
-                        value: Value::S(w[2..].to_owned()),
-                    });
-                },
-                "p" => if let Ok(n) = w[2..].parse::<f32>() {
-                    criteria.push(Criterion {
-                        field: "progress".into(),
-                        op: match &w[1..2] {
-                            ":" => Operation::Eq,
-                            "<" => Operation::LT,
-                            ">" => Operation::GT,
-                            _ => {
-                                // TODO: Insert red BG
-                                continue;
-                            }
-                        },
-                        value: Value::F(n / 100.),
-                    })
-                } else {
-                    // TODO: Insert red BG
-                },
-                "s" => if let Ok(n) = w[2..].parse::<f32>() {
-                    criteria.push(Criterion {
-                        field: "size".into(),
-                        op: match &w[1..2] {
-                            "<" => Operation::LTE,
-                            ">" => Operation::GTE,
-                            _ => {
-                                // TODO: Insert red BG
-                                continue;
-                            }
-                        },
-                        value: Value::F(n * 1024. * 1024.),
-                    });
-                } else {
-                    criteria.push(Criterion {
-                        field: "status".into(),
-                        op: Operation::Eq,
-                        value: match &w[2..3] {
-                            "i" => Value::S("idle".to_owned()),
-                            "s" => Value::S("seeding".to_owned()),
-                            "l" => Value::S("leeching".to_owned()),
-                            "e" => Value::S("error".to_owned()),
-                            "p" => Value::S("paused".to_owned()),
-                            "n" => Value::S("pending".to_owned()),
-                            "h" => Value::S("hashing".to_owned()),
-                            "m" => Value::S("magnet".to_owned()),
-                            _ => {
-                                // TODO: Insert red BG
-                                continue;
-                            }
-                        },
-                    });
-                },
+                "t" => {
+                    if &w[1..2] == ":" {
+                        criteria.push(Criterion {
+                            field: "tracker_urls".into(),
+                            op: Operation::Has,
+                            value: Value::S(w[2..].to_owned()),
+                        });
+                    }
+                }
+                "p" => {
+                    if let Ok(n) = w[2..].parse::<f32>() {
+                        criteria.push(Criterion {
+                            field: "progress".into(),
+                            op: match &w[1..2] {
+                                ":" => Operation::Eq,
+                                "<" => Operation::LT,
+                                ">" => Operation::GT,
+                                _ => {
+                                    // TODO: Insert red BG
+                                    continue;
+                                }
+                            },
+                            value: Value::F(n / 100.),
+                        })
+                    } else {
+                        // TODO: Insert red BG
+                    }
+                }
+                "s" => {
+                    if let Ok(n) = w[2..].parse::<f32>() {
+                        criteria.push(Criterion {
+                            field: "size".into(),
+                            op: match &w[1..2] {
+                                "<" => Operation::LTE,
+                                ">" => Operation::GTE,
+                                _ => {
+                                    // TODO: Insert red BG
+                                    continue;
+                                }
+                            },
+                            value: Value::F(n * 1024. * 1024.),
+                        });
+                    } else {
+                        criteria.push(Criterion {
+                            field: "status".into(),
+                            op: Operation::Eq,
+                            value: match &w[2..3] {
+                                "i" => Value::S("idle".to_owned()),
+                                "s" => Value::S("seeding".to_owned()),
+                                "l" => Value::S("leeching".to_owned()),
+                                "e" => Value::S("error".to_owned()),
+                                "p" => Value::S("paused".to_owned()),
+                                "n" => Value::S("pending".to_owned()),
+                                "h" => Value::S("hashing".to_owned()),
+                                "m" => Value::S("magnet".to_owned()),
+                                _ => {
+                                    // TODO: Insert red BG
+                                    continue;
+                                }
+                            },
+                        });
+                    }
+                }
                 _ => {
                     if !name.is_empty() {
                         name.push(' ');

@@ -96,7 +96,8 @@ where
                     } else {
                         "│".into()
                     }
-                }).unwrap();
+                })
+                .unwrap();
             }
             1
         } else {
@@ -252,7 +253,8 @@ where
                     "".to_owned()
                 },
                 div_budget.take(div_len as usize + 1).collect::<String>(),
-            ).unwrap();
+            )
+            .unwrap();
             Text::<_, align::x::Left, align::y::Top>::new(false, t.name()).render(
                 target,
                 // FIXME: Width too small if content truncated
@@ -274,7 +276,8 @@ where
                 } else {
                     "".to_owned()
                 },
-            ).unwrap();
+            )
+            .unwrap();
         }
 
         // Draw active component
@@ -356,7 +359,8 @@ where
                 start_color,
                 delim_hor,
                 end_color,
-            ).unwrap();
+            )
+            .unwrap();
         } else {
             write!(
                 target,
@@ -374,7 +378,8 @@ where
                     format!("{}{}{}", delim_l, name, delim_r)
                 },
                 end_color,
-            ).unwrap();
+            )
+            .unwrap();
         }
         for i in 1..(self.top_dimensions.1 + 1) {
             write!(
@@ -386,7 +391,8 @@ where
                 cursor::Goto(x_off + 1 + self.top_dimensions.0, y_off + i),
                 start_color,
                 end_color
-            ).unwrap();
+            )
+            .unwrap();
         }
         write!(
             target,
@@ -395,7 +401,8 @@ where
             start_color,
             delim_hor,
             end_color
-        ).unwrap();
+        )
+        .unwrap();
 
         // Write top layer, hope that the render doesn't violate the bounds
         self.top.render(
@@ -460,7 +467,8 @@ where
             self.top_dimensions,
             self.box_color.as_ref(),
             self.name.as_ref().map(|s| &s[..]),
-        ).render(target, width, height, x_off, y_off)
+        )
+        .render(target, width, height, x_off, y_off)
     }
 }
 
@@ -632,7 +640,8 @@ where
                         }
                         acc
                     },
-                ).5
+                )
+                .5
                 .into_iter()
                 .peekable();
             let mut i = 0;

@@ -107,7 +107,8 @@ impl Renderable for LoginPanel {
                 },
                 height / 3
             )
-        ).unwrap();
+        )
+        .unwrap();
         align::x::Left::align(target, lines);
     }
 }
@@ -115,55 +116,69 @@ impl Renderable for LoginPanel {
 impl HandleInput for LoginPanel {
     fn input(&mut self, k: Key, _: u16, _: u16) -> InputResult {
         match k {
-            Key::Home => if self.srv_selected {
-                self.server.home();
-            } else {
-                self.pass.home();
-            },
+            Key::Home => {
+                if self.srv_selected {
+                    self.server.home();
+                } else {
+                    self.pass.home();
+                }
+            }
 
-            Key::End => if self.srv_selected {
-                self.server.end();
-            } else {
-                self.pass.end();
-            },
+            Key::End => {
+                if self.srv_selected {
+                    self.server.end();
+                } else {
+                    self.pass.end();
+                }
+            }
 
             Key::Down | Key::Up | Key::Char('\t') => {
                 self.srv_selected = !self.srv_selected;
             }
 
-            Key::Left => if self.srv_selected {
-                self.server.cursor_left();
-            } else {
-                self.pass.cursor_left();
-            },
+            Key::Left => {
+                if self.srv_selected {
+                    self.server.cursor_left();
+                } else {
+                    self.pass.cursor_left();
+                }
+            }
 
-            Key::Right => if self.srv_selected {
-                self.server.cursor_right();
-            } else {
-                self.pass.cursor_right();
-            },
+            Key::Right => {
+                if self.srv_selected {
+                    self.server.cursor_right();
+                } else {
+                    self.pass.cursor_right();
+                }
+            }
 
-            Key::Backspace => if self.srv_selected {
-                self.server.backspace();
-            } else {
-                self.pass.backspace();
-            },
+            Key::Backspace => {
+                if self.srv_selected {
+                    self.server.backspace();
+                } else {
+                    self.pass.backspace();
+                }
+            }
 
-            Key::Delete => if self.srv_selected {
-                self.server.delete();
-            } else {
-                self.pass.delete();
-            },
+            Key::Delete => {
+                if self.srv_selected {
+                    self.server.delete();
+                } else {
+                    self.pass.delete();
+                }
+            }
 
             Key::Char('\n') => {
                 rpc::start_connect(self.server.inner(), self.pass.inner());
             }
 
-            Key::Char(c) => if self.srv_selected {
-                self.server.push(c);
-            } else {
-                self.pass.push(c);
-            },
+            Key::Char(c) => {
+                if self.srv_selected {
+                    self.server.push(c);
+                } else {
+                    self.pass.push(c);
+                }
+            }
             _ => {
                 return InputResult::Key(k);
             }
@@ -342,7 +357,8 @@ impl HandleInput for MainPanel {
                     self.torrents.2.get(self.torrents.1)
                 } else {
                     self.details.1.get(self.details.0).map(|d| d.inner())
-                }.and_then(|t| {
+                }
+                .and_then(|t| {
                     let mut tree = Vec::new();
                     let mut len = "Errors".len() as u16;
                     if let Some(ref e) = t.error {
@@ -408,7 +424,8 @@ impl HandleInput for MainPanel {
                         ),
                     )
                         as Box<Component>))
-                }).unwrap_or(InputResult::Key(Key::Char('e')));
+                })
+                .unwrap_or(InputResult::Key(Key::Char('e')));
             }
 
             (Key::Char('f'), Focus::Torrents) => {
@@ -527,7 +544,8 @@ impl Renderable for MainPanel {
                         t.tracker_urls
                             .iter()
                             .any(|tu| *tu == tra.0.url.host_str().unwrap())
-                    }).any(|(ref base, ref others)| {
+                    })
+                    .any(|(ref base, ref others)| {
                         base.error.is_some() || others
                             .iter()
                             .any(|&(_, ref id, ref e)| t.id == *id && e.is_some())
@@ -569,7 +587,8 @@ impl Renderable for MainPanel {
                         &**t.name.as_ref().unwrap_or_else(|| &t.path),
                         c_e
                     ),
-                ).render(target, width_left, 1, x, y + i as u16);
+                )
+                .render(target, width_left, 1, x, y + i as u16);
                 if render_stats {
                     widgets::Text::<_, align::x::Right, align::y::Top>::new(
                         true,
@@ -600,7 +619,8 @@ impl Renderable for MainPanel {
                         w_td = width_throttle_down,
                         w_rat = width_ratio,
                     ),
-                    ).render(
+                    )
+                    .render(
                         target,
                         cmp::min(width_right as u16, width),
                         1,
@@ -616,7 +636,8 @@ impl Renderable for MainPanel {
                         Focus::Filter => self.filter.format(true),
                         _ => self.filter.format(false),
                     },
-                ).render(target, width, 1, x, height);
+                )
+                .render(target, width, 1, x, height);
             }
         };
         let draw_trackers = |target: &mut _, width, height, x, y| {
@@ -631,7 +652,8 @@ impl Renderable for MainPanel {
                         t.tracker_urls
                             .iter()
                             .any(|u| *u == base.url.host_str().unwrap())
-                    }).unwrap_or(false);
+                    })
+                    .unwrap_or(false);
                 let (c_s, c_e) = match (
                     matches,
                     (base.error.is_some()
@@ -663,7 +685,8 @@ impl Renderable for MainPanel {
                         base.url.host_str().unwrap(),
                         c_e,
                     ),
-                ).render(target, width, 1, x, y + i as u16);
+                )
+                .render(target, width, 1, x, y + i as u16);
             }
         };
         let draw_details = |target: &mut _, width, height, x, y| {
@@ -677,7 +700,8 @@ impl Renderable for MainPanel {
                     )
                 },
                 self.details.0,
-            ).render(target, width, height, x, y);
+            )
+            .render(target, width, height, x, y);
         };
         let draw_footer = |target: &mut _, width, height, x, y| {
             widgets::Text::<_, align::x::Left, align::y::Top>::new(
@@ -714,7 +738,8 @@ impl Renderable for MainPanel {
                     self.server.transferred_up.fmt_size(),
                     self.server.transferred_down.fmt_size(),
                 ),
-            ).render(target, width, height, x, y);
+            )
+            .render(target, width, height, x, y);
         };
 
         match (self.trackers_disp, self.details.1.is_empty()) {
@@ -725,7 +750,8 @@ impl Renderable for MainPanel {
                     None,
                     widgets::Unit::Lines(height.saturating_sub(2)),
                     true,
-                ).render(target, width, height, x_off, y_off);
+                )
+                .render(target, width, height, x_off, y_off);
             }
             (true, true) => {
                 widgets::HSplit::new(
@@ -740,7 +766,8 @@ impl Renderable for MainPanel {
                     None,
                     widgets::Unit::Lines(height.saturating_sub(2)),
                     true,
-                ).render(target, width, height, x_off, y_off);
+                )
+                .render(target, width, height, x_off, y_off);
             }
             (false, false) => {
                 widgets::HSplit::new(
@@ -755,7 +782,8 @@ impl Renderable for MainPanel {
                     None,
                     widgets::Unit::Lines(height.saturating_sub(2)),
                     true,
-                ).render(target, width, height, x_off, y_off);
+                )
+                .render(target, width, height, x_off, y_off);
             }
             (true, false) => {
                 widgets::HSplit::new(
@@ -776,7 +804,8 @@ impl Renderable for MainPanel {
                     None,
                     widgets::Unit::Lines(height.saturating_sub(2)),
                     true,
-                ).render(target, width, height, x_off, y_off);
+                )
+                .render(target, width, height, x_off, y_off);
             }
         }
     }
@@ -897,7 +926,8 @@ impl HandleRpc for MainPanel {
                                                 }),
                                             &name,
                                         )
-                                    }).unwrap_or_else(|e| e);
+                                    })
+                                    .unwrap_or_else(|e| e);
                                 name_cache.as_mut().unwrap().insert(t.id.clone(), name);
                                 self.torrents.2.insert(idx, t);
                             }
@@ -946,19 +976,21 @@ impl HandleRpc for MainPanel {
                             last_report,
                             error,
                             ..
-                        } => for &mut (ref mut base, ref mut others) in &mut self.trackers {
-                            if id == base.id {
-                                base.last_report = last_report;
-                                base.error = error;
-                                break;
-                            } else if let Ok(pos) =
-                                others.binary_search_by_key(&&id, |&(ref id, _, _)| id)
-                            {
-                                base.last_report = last_report;
-                                others[pos].2 = error;
-                                break;
+                        } => {
+                            for &mut (ref mut base, ref mut others) in &mut self.trackers {
+                                if id == base.id {
+                                    base.last_report = last_report;
+                                    base.error = error;
+                                    break;
+                                } else if let Ok(pos) =
+                                    others.binary_search_by_key(&&id, |&(ref id, _, _)| id)
+                                {
+                                    base.last_report = last_report;
+                                    others[pos].2 = error;
+                                    break;
+                                }
                             }
-                        },
+                        }
                         // Torrent updates
                         SResourceUpdate::Throttle {
                             kind: ResourceKind::Torrent,
@@ -1039,7 +1071,8 @@ impl Renderable for TorrentDetailsPanel {
                     fmt::date_diff_now(self.torr.created),
                     fmt::date_diff_now(self.torr.modified),
                 ),
-            ).render(target, width, 1, x_off, y_off);
+            )
+            .render(target, width, 1, x_off, y_off);
         }
 
         if height >= 2 {
@@ -1065,7 +1098,8 @@ impl Renderable for TorrentDetailsPanel {
                     self.torr.transferred_up.fmt_size(),
                     self.torr.transferred_down.fmt_size(),
                 ),
-            ).render(target, width, 1, x_off, y_off + 1);
+            )
+            .render(target, width, 1, x_off, y_off + 1);
         }
 
         if height >= 3 {
@@ -1081,7 +1115,8 @@ impl Renderable for TorrentDetailsPanel {
                     (self.torr.availability * 100.).round(),
                     self.torr.priority,
                 ),
-            ).render(target, width, 1, x_off, y_off + 2);
+            )
+            .render(target, width, 1, x_off, y_off + 2);
         }
 
         if height >= 4 {
