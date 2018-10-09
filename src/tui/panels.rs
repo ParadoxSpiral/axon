@@ -428,7 +428,7 @@ impl HandleInput for MainPanel {
                 .unwrap_or(InputResult::Key(Key::Char('e')));
             }
 
-            (Key::Char('f'), Focus::Torrents) => {
+            (Key::Char('f'), Focus::Torrents) | (Key::Char('f'), Focus::Details) => {
                 self.focus = Focus::Filter;
                 if !self.filter_disp {
                     self.filter_disp = true;
