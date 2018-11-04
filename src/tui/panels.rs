@@ -169,7 +169,7 @@ impl HandleInput for LoginPanel {
             }
 
             Key::Char('\n') => {
-                rpc::start_connect(self.server.inner(), self.pass.inner());
+                rpc::start_connect(self.server.inner(), self.pass.inner()).map(|f| tokio::spawn(f));
             }
 
             Key::Char(c) => {
@@ -411,19 +411,18 @@ impl HandleInput for MainPanel {
 
                     let tlen = tree.len() as _;
                     // FIXME: Cloning self here is pretty hacky
-                    Some(InputResult::ReplaceWith(Box::new(
-                        widgets::OwnedOverlay::<_, color::Red>::new(
+                    Some(InputResult::ReplaceWith(
+                        Box::new(widgets::OwnedOverlay::new(
                             widgets::CloseOnInput::new(
                                 widgets::IgnoreRpc::new(widgets::RenderStateFn::new(draw, tree)),
                                 &[],
                             ),
                             Box::new(self.clone()),
                             (len, tlen),
-                            Some(color::Red),
+                            Some(Box::new(color::Red)),
                             "Errors".to_owned(),
-                        ),
-                    )
-                        as Box<Component>))
+                        )) as Box<Component>,
+                    ))
                 })
                 .unwrap_or(InputResult::Key(Key::Char('e')));
             }
@@ -546,9 +545,10 @@ impl Renderable for MainPanel {
                             .any(|tu| *tu == tra.0.url.host_str().unwrap())
                     })
                     .any(|(ref base, ref others)| {
-                        base.error.is_some() || others
-                            .iter()
-                            .any(|&(_, ref id, ref e)| t.id == *id && e.is_some())
+                        base.error.is_some()
+                            || others
+                                .iter()
+                                .any(|&(_, ref id, ref e)| t.id == *id && e.is_some())
                     });
 
                 let (c_s, c_e) = match self.focus {
@@ -707,7 +707,7 @@ impl Renderable for MainPanel {
             widgets::Text::<_, align::x::Left, align::y::Top>::new(
                 true,
                 format!(
-                    "Server {}: {}, {}   {}[{}]↑ {}[{}]↓   \
+                    "Server {}: {}, {}    {}[{}]↑ {}[{}]↓   \
                      Session: {:.2}, {}↑ {}↓   Lifetime: {:.2}, {}↑ {}↓",
                     self.server_version,
                     fmt::date_diff_now(self.server.started),

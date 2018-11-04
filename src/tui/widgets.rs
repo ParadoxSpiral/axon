@@ -287,32 +287,30 @@ where
     }
 }
 
-pub struct BorrowedOverlay<'a, T: 'a, B: 'a, C: 'a>
+pub struct BorrowedOverlay<'a, T: 'a, B: 'a>
 where
     T: Renderable + ?Sized + Send,
     B: Renderable + ?Sized + Send,
-    C: Color + Send + Sync,
 {
     top: &'a mut T,
     below: &'a mut B,
     top_dimensions: (u16, u16),
-    box_color: Option<&'a C>,
+    box_color: Option<&'a (dyn Color + Send + Sync)>,
     name: Option<&'a str>,
 }
 
-impl<'a, T, B, C> BorrowedOverlay<'a, T, B, C>
+impl<'a, T, B> BorrowedOverlay<'a, T, B>
 where
     T: Renderable + ?Sized + Send,
     B: Renderable + ?Sized + Send,
-    C: Color + Send + Sync,
 {
     pub fn new<J: Into<Option<&'a str>>>(
         top: &'a mut T,
         below: &'a mut B,
         top_dimensions: (u16, u16),
-        box_color: Option<&'a C>,
+        box_color: Option<&'a (dyn Color + Send + Sync)>,
         name: J,
-    ) -> BorrowedOverlay<'a, T, B, C> {
+    ) -> BorrowedOverlay<'a, T, B> {
         BorrowedOverlay {
             top,
             below,
@@ -323,11 +321,10 @@ where
     }
 }
 
-impl<'a, T, B, C> Renderable for BorrowedOverlay<'a, T, B, C>
+impl<'a, T, B> Renderable for BorrowedOverlay<'a, T, B>
 where
     T: Renderable + ?Sized + Send,
     B: Renderable + ?Sized + Send,
-    C: Color + Send + Sync,
 {
     fn render(&mut self, target: &mut Vec<u8>, width: u16, height: u16, x_off: u16, y_off: u16) {
         // Render lower layer
@@ -415,67 +412,59 @@ where
     }
 }
 
-pub struct OwnedOverlay<T, C>
+pub struct OwnedOverlay<T>
 where
     T: Component + Send,
-    C: Color + Send + Sync,
 {
     top: T,
     below: ManuallyDrop<Box<Component>>,
     top_dimensions: (u16, u16),
-    box_color: Option<C>,
+    box_color: Option<Box<dyn Color + Send + Sync>>,
     name: Option<String>,
 }
-impl<T, C> OwnedOverlay<T, C>
+impl<T> OwnedOverlay<T>
 where
     T: Component + Send,
-    C: Color + Send + Sync,
 {
-    pub fn new<I: Into<Option<C>>, J: Into<Option<String>>>(
+    pub fn new<J: Into<Option<String>>>(
         top: T,
         below: Box<Component>,
         top_dimensions: (u16, u16),
-        box_color: I,
+        box_color: Option<Box<dyn Color + Send + Sync>>,
         name: J,
-    ) -> OwnedOverlay<T, C> {
+    ) -> OwnedOverlay<T> {
         assert!(top_dimensions.0 > 0 && top_dimensions.1 > 0);
         OwnedOverlay {
             top,
             below: ManuallyDrop::new(below),
             top_dimensions,
-            box_color: box_color.into(),
+            box_color: box_color,
             name: name.into(),
         }
     }
 }
 
-impl<T, C> Component for OwnedOverlay<T, C>
-where
-    T: Component + Send,
-    C: Color + Send + Sync,
-{}
+impl<T> Component for OwnedOverlay<T> where T: Component + Send {}
 
-impl<T, C> Renderable for OwnedOverlay<T, C>
+impl<T> Renderable for OwnedOverlay<T>
 where
     T: Component + Send,
-    C: Color + Send + Sync,
 {
     fn render(&mut self, target: &mut Vec<u8>, width: u16, height: u16, x_off: u16, y_off: u16) {
-        BorrowedOverlay::<_, _, C>::new(
+        BorrowedOverlay::new(
             &mut self.top,
             &mut **self.below,
             self.top_dimensions,
-            self.box_color.as_ref(),
+            self.box_color.as_ref().map(|b| &**b),
             self.name.as_ref().map(|s| &s[..]),
         )
         .render(target, width, height, x_off, y_off)
     }
 }
 
-impl<T, C> HandleRpc for OwnedOverlay<T, C>
+impl<T> HandleRpc for OwnedOverlay<T>
 where
     T: Component + Send,
-    C: Color + Send + Sync,
 {
     fn rpc(&mut self, msg: SMessage) -> bool {
         self.top.rpc(msg.clone());
@@ -483,10 +472,9 @@ where
     }
 }
 
-impl<T, C> HandleInput for OwnedOverlay<T, C>
+impl<T> HandleInput for OwnedOverlay<T>
 where
     T: Component + Send,
-    C: Color + Send + Sync,
 {
     fn input(&mut self, k: Key, w: u16, h: u16) -> InputResult {
         match self.top.input(k, w, h) {
@@ -550,14 +538,15 @@ where
         }
 
         let content = self.content.borrow();
-        let x_off = x_off + match AX::align_offset(&[content], width) {
-            x::Alignment::Single(x) => x,
-            x::Alignment::Each(v) => {
-                // TODO: unimpl for n > 1
-                assert_eq!(1, v.len());
-                *v.first().unwrap()
-            }
-        };
+        let x_off = x_off
+            + match AX::align_offset(&[content], width) {
+                x::Alignment::Single(x) => x,
+                x::Alignment::Each(v) => {
+                    // TODO: unimpl for n > 1
+                    assert_eq!(1, v.len());
+                    *v.first().unwrap()
+                }
+            };
         let y_off = y_off + AY::align_offset(&[content], height);
         let len = utils::count_without_styling(content);
 

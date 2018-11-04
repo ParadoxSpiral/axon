@@ -50,10 +50,10 @@ mod tui;
 mod utils;
 
 use tokio::prelude::*;
-use tokio::runtime::{Runtime, TaskExecutor};
+use tokio::runtime::Runtime;
 
 use config::CONFIG;
-use tui::view::View;
+use tui::view;
 
 #[cfg(feature = "dbg")]
 lazy_static! {
@@ -79,18 +79,11 @@ lazy_static! {
     static ref S_VIEW: slog::Logger = (*SLOG_ROOT).new(o!("View" => true));
 }
 
-// This is a bit hacky
-static mut INTERNAL_EXECUTOR: Option<TaskExecutor> = None;
-lazy_static! {
-    static ref EXECUTOR: &'static TaskExecutor = unsafe { INTERNAL_EXECUTOR.as_ref().unwrap() };
-    static ref VIEW: View = View::new();
-}
-
 fn main() {
-    let rt = Runtime::new().unwrap();
-    unsafe {
-        INTERNAL_EXECUTOR = Some(rt.executor());
-    }
+    let mut rt = Runtime::new().unwrap();
+
+    rt.spawn(view::start());
+    input::start();
 
     if CONFIG.autoconnect {
         #[cfg(feature = "dbg")]
@@ -103,15 +96,9 @@ fn main() {
                 .as_ref()
                 .map(|p| &**p)
                 .unwrap_or_else(|| ""),
-        );
-    } else {
-        // Initialize the lazily initialized View, if it wasn't be a call to connect
-        &*VIEW;
+        )
+        .map(|f| rt.spawn(f));
     }
 
-    input::start();
-
     rt.shutdown_on_idle().wait().unwrap();
-
-    VIEW.restore_terminal();
 }

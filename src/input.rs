@@ -18,16 +18,22 @@
 use termion::color;
 use termion::input::TermRead;
 
+use tui::view::{self, Task};
+
 pub fn start() {
     ::std::thread::spawn(|| {
         let stdin = ::std::io::stdin();
         for ev in stdin.lock().keys() {
             match ev {
                 Ok(k) => {
-                    ::tui::view::notify_input(k);
+                    view::notify_input(k);
                 }
                 Err(e) => {
-                    ::VIEW.overlay("Input".to_owned(), e.to_string(), Some(color::Red));
+                    Task::overlay(
+                        "Input".to_owned(),
+                        e.to_string(),
+                        Some(Box::new(color::Red)),
+                    );
                 }
             };
         }

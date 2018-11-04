@@ -31,7 +31,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 
-use tui::view;
+use tui::view::{self, Task};
 
 enum WaiterMsg {
     Send(Message),
@@ -67,48 +67,52 @@ pub fn disconnect() {
     WAKER.0.lock().try_send(WaiterMsg::Close).unwrap();
 }
 
-pub fn start_connect(srv: &str, pass: &str) {
+pub fn start_connect(srv: &str, pass: &str) -> Option<impl Future<Item = (), Error = ()>> {
     #[cfg(feature = "dbg")]
     trace!(*::S_RPC, "RPC should connect");
 
     let mut url = match Url::parse(srv) {
         Ok(u) => u,
         Err(e) => {
-            ::VIEW.overlay("Url".to_owned(), e.to_string(), Some(color::Red));
-            return;
+            Task::overlay("Url".to_owned(), e.to_string(), Some(Box::new(color::Red)));
+            return None;
         }
     };
     url.query_pairs_mut().append_pair("password", pass).finish();
 
-    ::EXECUTOR.spawn(
+    Some(
         ws::connect_async(url)
             .map_err(|err| format!("{:?}", err))
             .timeout(Duration::from_secs(10))
             .map_err(|e| {
-                ::VIEW.overlay(
+                Task::overlay(
                     "RPC".into(),
                     if e.is_timer() {
                         "Timeout while connecting to server (10s)".to_owned()
                     } else {
                         e.into_inner().unwrap()
                     },
-                    Some(color::Red),
-                )
+                    Some(Box::new(color::Red)),
+                );
             })
-            .and_then(move |(stream, _)| {
+            .map(move |(stream, _)| {
                 #[cfg(feature = "dbg")]
                 trace!(*::S_RPC, "RPC connected");
 
-                ::VIEW.login();
+                Task::login();
 
                 let (sink, stream) = stream.split();
                 let sink1 = Arc::new(Mutex::new(sink));
                 let sink2 = Arc::clone(&sink1);
                 let mut pending_flush = false;
-                ::EXECUTOR.spawn(
+                tokio::spawn(
                     stream
                         .map_err(|e| {
-                            ::VIEW.overlay("RPC".to_owned(), e.to_string(), Some(color::Red))
+                            Task::overlay(
+                                "RPC".to_owned(),
+                                e.to_string(),
+                                Some(Box::new(color::Red)),
+                            );
                         })
                         .select(
                             future::poll_fn(move || {
@@ -129,16 +133,16 @@ pub fn start_connect(srv: &str, pass: &str) {
                                         }
                                         Ok(Async::NotReady) if pending_flush => {
                                             let sink = Arc::clone(&sink1);
-                                            ::EXECUTOR.spawn(future::poll_fn(move || {
+                                            tokio::spawn(future::poll_fn(move || {
                                                 if SERIAL.load(Ordering::Acquire) == 0 {
                                                     Ok(Async::Ready(()))
                                                 } else {
                                                     sink.lock().poll_complete().map_err(|e| {
-                                                        ::VIEW.overlay(
+                                                        Task::overlay(
                                                             "RPC".to_owned(),
                                                             e.to_string(),
-                                                            Some(color::Red),
-                                                        )
+                                                            Some(Box::new(color::Red)),
+                                                        );
                                                     })
                                                 }
                                             }));
@@ -159,11 +163,14 @@ pub fn start_connect(srv: &str, pass: &str) {
                         .for_each(|msg| match msg {
                             Message::Ping(p) => Ok(send_raw(Message::Pong(p))),
                             Message::Text(s) => match serde_json::from_str::<SMessage>(&s) {
-                                Err(e) => Err(::VIEW.overlay(
-                                    "RPC".to_owned(),
-                                    e.description().to_string(),
-                                    Some(color::Red),
-                                )),
+                                Err(e) => {
+                                    Task::overlay(
+                                        "RPC".to_owned(),
+                                        e.description().to_string(),
+                                        Some(Box::new(color::Red)),
+                                    );
+                                    Err(())
+                                }
                                 Ok(msg) => match msg {
                                     SMessage::ResourcesExtant { ids, .. } => {
                                         Ok(send(CMessage::Subscribe {
@@ -193,7 +200,7 @@ pub fn start_connect(srv: &str, pass: &str) {
                                             #[cfg(feature = "dbg")]
                                             warn!(*::S_RPC, "RPC version mismatch");
 
-                                            ::VIEW.overlay(
+                                            Task::overlay(
                                                 "RPC".to_string(),
                                                 format!(
                                                     "Server version {:?} \
@@ -202,7 +209,7 @@ pub fn start_connect(srv: &str, pass: &str) {
                                                     synapse_rpc::MAJOR_VERSION,
                                                     synapse_rpc::MINOR_VERSION
                                                 ),
-                                                Some(color::Red),
+                                                Some(Box::new(color::Red)),
                                             );
                                             Err(())
                                         } else {
@@ -222,7 +229,7 @@ pub fn start_connect(srv: &str, pass: &str) {
                             _ => unreachable!(),
                         })
                         .map_err(move |_| {
-                            ::VIEW.connection_close();
+                            Task::close();
 
                             SERIAL.store(0, Ordering::Release);
                             sink2.lock().close().unwrap();
@@ -235,8 +242,6 @@ pub fn start_connect(srv: &str, pass: &str) {
                             debug!(*::S_RPC, "RPC disconnected");
                         }),
                 );
-
-                Ok(())
             }),
-    );
+    )
 }
