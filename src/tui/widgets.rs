@@ -14,20 +14,25 @@
 // along with Axon.  If not, see <http://www.gnu.org/licenses/>.
 
 use synapse_rpc::message::SMessage;
-use termion::color::Color;
 use termion::event::Key;
-use termion::{color, cursor, style};
+use termion::{cursor, style};
 use unicode_segmentation::UnicodeSegmentation;
 
 use std::borrow::{Borrow, BorrowMut};
 use std::io::Write;
 use std::marker::PhantomData;
 use std::mem::ManuallyDrop;
+use std::ops::Range;
 use std::str;
 
 use super::{Component, HandleInput, HandleRpc, InputResult, Renderable};
-use utils;
-use utils::align::{self, x, y};
+use utils::{
+    self,
+    align::{self, x, y},
+    color::ColorEscape,
+};
+
+// TODO: Splitup in render and util widgets
 
 pub enum Unit {
     Lines(u16),
@@ -92,7 +97,7 @@ where
                     if self.left_active.unwrap_or(false) && i < height / 2
                         || !self.left_active.unwrap_or(true) && i > height / 2
                     {
-                        format!("{}│{}", color::Fg(color::Cyan), color::Fg(color::Reset))
+                        format!("{}│{}", ColorEscape::cyan(), ColorEscape::reset())
                     } else {
                         "│".into()
                     }
@@ -179,11 +184,11 @@ where
                 if self.top_active.unwrap_or(false) && i == 0
                     || !self.top_active.unwrap_or(true) && i == width / 2
                 {
-                    acc + &*format!("{}─", color::Fg(color::Cyan))
+                    acc + &*format!("{}─", ColorEscape::cyan())
                 } else if self.top_active.unwrap_or(false) && i == width / 2
                     || !self.top_active.unwrap_or(true) && i == width
                 {
-                    acc + &*format!("─{}", color::Fg(color::Reset))
+                    acc + &*format!("─{}", ColorEscape::reset())
                 } else {
                     acc + "─"
                 }
@@ -248,7 +253,7 @@ where
                 target,
                 "{}{}",
                 if self.active_idx == i {
-                    format!("{}", color::Fg(color::Cyan))
+                    format!("{}", ColorEscape::cyan())
                 } else {
                     "".to_owned()
                 },
@@ -272,9 +277,9 @@ where
                     div_budget.take(div_len as usize + 1).collect()
                 },
                 if self.active_idx == i {
-                    format!("{}", color::Fg(color::Reset))
+                    ColorEscape::reset()
                 } else {
-                    "".to_owned()
+                    ColorEscape::empty()
                 },
             )
             .unwrap();
@@ -295,7 +300,7 @@ where
     top: &'a mut T,
     below: &'a mut B,
     top_dimensions: (u16, u16),
-    box_color: Option<&'a (dyn Color + Send + Sync)>,
+    box_color: Option<&'a ColorEscape>,
     name: Option<&'a str>,
 }
 
@@ -308,7 +313,7 @@ where
         top: &'a mut T,
         below: &'a mut B,
         top_dimensions: (u16, u16),
-        box_color: Option<&'a (dyn Color + Send + Sync)>,
+        box_color: Option<&'a ColorEscape>,
         name: J,
     ) -> BorrowedOverlay<'a, T, B> {
         BorrowedOverlay {
@@ -335,15 +340,12 @@ where
 
         // Prepare writing the overlay box
         let delim_hor = "─".repeat(self.top_dimensions.0 as _);
-        let (start_color, end_color) = if let Some(c) = self.box_color {
-            (
-                format!("{}", color::Fg(c as &Color)),
-                format!("{}", color::Fg(color::Reset)),
-            )
+        let (c_s, c_e) = if let Some(c) = self.box_color {
+            (format!("{}", c), ColorEscape::reset())
         } else {
             (
-                format!("{}{}", color::Fg(color::Black), color::Fg(color::Reset)),
-                "".into(),
+                format!("{}{}", ColorEscape::black(), ColorEscape::reset()),
+                ColorEscape::empty(),
             )
         };
 
@@ -353,9 +355,9 @@ where
                 target,
                 "{}{}┌{}┐{}",
                 cursor::Goto(x_off, y_off),
-                start_color,
+                c_s,
                 delim_hor,
-                end_color,
+                c_e,
             )
             .unwrap();
         } else {
@@ -363,7 +365,7 @@ where
                 target,
                 "{}{}┌{}┐{}",
                 cursor::Goto(x_off, y_off),
-                start_color,
+                c_s,
                 {
                     let name = self.name.unwrap();
                     let delim = "─".repeat(self.top_dimensions.0 as usize - name.len());
@@ -374,7 +376,7 @@ where
                     let (delim_l, delim_r) = delim.split_at(mid);
                     format!("{}{}{}", delim_l, name, delim_r)
                 },
-                end_color,
+                c_e,
             )
             .unwrap();
         }
@@ -383,11 +385,11 @@ where
                 target,
                 "{}{}│{}{}{}│{}",
                 cursor::Goto(x_off, y_off + i),
-                start_color,
-                end_color,
+                c_s,
+                c_e,
                 cursor::Goto(x_off + 1 + self.top_dimensions.0, y_off + i),
-                start_color,
-                end_color
+                c_s,
+                c_e,
             )
             .unwrap();
         }
@@ -395,9 +397,9 @@ where
             target,
             "{}{}└{}┘{}",
             cursor::Goto(x_off, y_off + self.top_dimensions.1 + 1),
-            start_color,
+            c_s,
             delim_hor,
-            end_color
+            c_e,
         )
         .unwrap();
 
@@ -419,7 +421,7 @@ where
     top: T,
     below: ManuallyDrop<Box<Component>>,
     top_dimensions: (u16, u16),
-    box_color: Option<Box<dyn Color + Send + Sync>>,
+    box_color: Option<ColorEscape>,
     name: Option<String>,
 }
 impl<T> OwnedOverlay<T>
@@ -430,7 +432,7 @@ where
         top: T,
         below: Box<Component>,
         top_dimensions: (u16, u16),
-        box_color: Option<Box<dyn Color + Send + Sync>>,
+        box_color: Option<ColorEscape>,
         name: J,
     ) -> OwnedOverlay<T> {
         assert!(top_dimensions.0 > 0 && top_dimensions.1 > 0);
@@ -455,7 +457,7 @@ where
             &mut self.top,
             &mut **self.below,
             self.top_dimensions,
-            self.box_color.as_ref().map(|b| &**b),
+            self.box_color.as_ref(),
             self.name.as_ref().map(|s| &s[..]),
         )
         .render(target, width, height, x_off, y_off)
@@ -555,7 +557,8 @@ where
         } else {
             let mut chunks = content
                 .graphemes(true)
-                // Version of .chunks that preserves control codes
+                // Version of .chunks that preserves control codes, unfortunately termion does not
+                // provide access to its parsing functions
                 .fold(
                     // idx of control, idx of str, current str len, inside_esc, control code, str
                     (0, 0, 0, false, Vec::new(), vec![String::new()]),
@@ -607,11 +610,9 @@ where
                                 acc.4.reverse();
                                 for esc in acc.4.drain(..) {
                                     if esc.starts_with("\x1B[38;") {
-                                        acc.5[acc.1]
-                                            .push_str(&format!("{}", color::Fg(color::Reset)));
+                                        acc.5[acc.1].push_str(ColorEscape::reset().inner());
                                     } else if esc.starts_with("\x1B[48;") {
-                                        acc.5[acc.1]
-                                            .push_str(&format!("{}", color::Bg(color::Reset)));
+                                        acc.5[acc.1].push_str(ColorEscape::reset_bg().inner());
                                     } else {
                                         acc.5[acc.1].push_str(&format!("{}", style::Reset));
                                     }

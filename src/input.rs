@@ -16,22 +16,18 @@
 // along with Axon.  If not, see <http://www.gnu.org/licenses/>.
 
 use bytes::BytesMut;
-use termion::color;
 use termion::event::{self, Event, Key};
 use tokio::{codec, io, prelude::*};
 
 use std::io::Error;
 
 use tui::view::Notify;
+use utils::color::ColorEscape;
 
 pub fn start() -> impl Future<Item = (), Error = ()> {
     codec::FramedRead::new(io::stdin(), InputCodec)
         .map_err(|e| {
-            Notify::overlay(
-                "Input".to_owned(),
-                e.to_string(),
-                Some(Box::new(color::Red)),
-            );
+            Notify::overlay("Input".to_owned(), e.to_string(), Some(ColorEscape::red()));
         })
         .for_each(|key| {
             Notify::input(key);

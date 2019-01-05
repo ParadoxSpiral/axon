@@ -16,6 +16,7 @@
 // along with Axon.  If not, see <http://www.gnu.org/licenses/>.
 
 pub mod align;
+pub mod color;
 pub mod filter;
 pub mod fmt;
 

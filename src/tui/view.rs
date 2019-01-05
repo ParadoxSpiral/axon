@@ -18,7 +18,7 @@ use parking_lot::Mutex;
 use synapse_rpc::message::SMessage;
 use termion::event::Key;
 use termion::raw::IntoRawMode;
-use termion::{self, clear, color, cursor};
+use termion::{self, clear, cursor};
 use tokio::prelude::*;
 use tokio::timer;
 
@@ -30,7 +30,7 @@ use std::time::{Duration, Instant};
 
 use super::{panels, widgets, Component, InputResult};
 use rpc;
-use utils::align;
+use utils::{align, color::ColorEscape};
 
 lazy_static! {
     static ref NOTIFICATIONS: (
@@ -48,7 +48,7 @@ pub enum Notify {
     Input(Key),
     Rpc(SMessage<'static>),
     // name, text, color
-    Overlay(String, String, Option<Box<dyn color::Color + Send + Sync>>),
+    Overlay(String, String, Option<ColorEscape>),
 }
 
 // We don't care about the errors, because it only signifies closal, which implies shutdown
@@ -66,7 +66,7 @@ impl Notify {
     pub fn rpc(msg: SMessage<'static>) {
         NOTIFICATIONS.0.lock().unbounded_send(Notify::Rpc(msg));
     }
-    pub fn overlay(name: String, text: String, color: Option<Box<dyn color::Color + Send + Sync>>) {
+    pub fn overlay(name: String, text: String, color: Option<ColorEscape>) {
         NOTIFICATIONS
             .0
             .lock()

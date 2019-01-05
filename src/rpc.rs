@@ -20,7 +20,6 @@ use parking_lot::Mutex;
 use serde_json;
 use synapse_rpc;
 use synapse_rpc::message::{CMessage, SMessage};
-use termion::color;
 use tokio::prelude::*;
 use url::Url;
 use ws;
@@ -32,6 +31,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use tui::view::Notify;
+use utils::color::ColorEscape;
 
 enum WaiterMsg {
     Send(Message),
@@ -74,7 +74,7 @@ pub fn start_connect(srv: &str, pass: &str) -> Option<impl Future<Item = (), Err
     let mut url = match Url::parse(srv) {
         Ok(u) => u,
         Err(e) => {
-            Notify::overlay("Url".to_owned(), e.to_string(), Some(Box::new(color::Red)));
+            Notify::overlay("Url".to_owned(), e.to_string(), Some(ColorEscape::red()));
             return None;
         }
     };
@@ -92,7 +92,7 @@ pub fn start_connect(srv: &str, pass: &str) -> Option<impl Future<Item = (), Err
                     } else {
                         e.into_inner().unwrap()
                     },
-                    Some(Box::new(color::Red)),
+                    Some(ColorEscape::red()),
                 );
             })
             .map(move |(stream, _)| {
@@ -111,7 +111,7 @@ pub fn start_connect(srv: &str, pass: &str) -> Option<impl Future<Item = (), Err
                             Notify::overlay(
                                 "RPC".to_owned(),
                                 e.to_string(),
-                                Some(Box::new(color::Red)),
+                                Some(ColorEscape::red()),
                             );
                         })
                         .select(
@@ -141,7 +141,7 @@ pub fn start_connect(srv: &str, pass: &str) -> Option<impl Future<Item = (), Err
                                                         Notify::overlay(
                                                             "RPC".to_owned(),
                                                             e.to_string(),
-                                                            Some(Box::new(color::Red)),
+                                                            Some(ColorEscape::red()),
                                                         );
                                                     })
                                                 }
@@ -167,7 +167,7 @@ pub fn start_connect(srv: &str, pass: &str) -> Option<impl Future<Item = (), Err
                                     Notify::overlay(
                                         "RPC".to_owned(),
                                         e.description().to_string(),
-                                        Some(Box::new(color::Red)),
+                                        Some(ColorEscape::red()),
                                     );
                                     Err(())
                                 }
@@ -206,7 +206,7 @@ pub fn start_connect(srv: &str, pass: &str) -> Option<impl Future<Item = (), Err
                                                     synapse_rpc::MAJOR_VERSION,
                                                     synapse_rpc::MINOR_VERSION
                                                 ),
-                                                Some(Box::new(color::Red)),
+                                                Some(ColorEscape::red()),
                                             );
                                             Err(())
                                         } else {

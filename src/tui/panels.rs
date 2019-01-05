@@ -16,8 +16,8 @@
 use natord;
 use synapse_rpc::message::{CMessage, SMessage};
 use synapse_rpc::resource::{Resource, ResourceKind, SResourceUpdate, Server, Torrent, Tracker};
+use termion::cursor;
 use termion::event::Key;
-use termion::{color, cursor};
 
 use std::borrow::Cow;
 use std::cmp;
@@ -27,10 +27,12 @@ use std::io::Write;
 
 use super::{widgets, Component, HandleInput, HandleRpc, InputResult, Renderable};
 use config::CONFIG;
-use utils::align;
-use utils::align::x::Align;
-use utils::filter::Filter;
-use utils::fmt::{self, FormatSize};
+use utils::{
+    align::{self, x::Align},
+    color::ColorEscape,
+    filter::Filter,
+    fmt::{self, FormatSize},
+};
 
 use rpc;
 
@@ -73,8 +75,8 @@ impl Renderable for LoginPanel {
             (
                 format!(
                     "{}Server{}: {}",
-                    color::Fg(color::Cyan),
-                    color::Fg(color::Reset),
+                    ColorEscape::cyan(),
+                    ColorEscape::reset(),
                     self.server.format_active()
                 ),
                 format!("Pass: {}", self.pass.format_inactive()),
@@ -84,8 +86,8 @@ impl Renderable for LoginPanel {
                 format!("Server: {}", self.server.format_inactive()),
                 format!(
                     "{}Pass{}: {}",
-                    color::Fg(color::Cyan),
-                    color::Fg(color::Reset),
+                    ColorEscape::cyan(),
+                    ColorEscape::reset(),
                     self.pass.format_active()
                 ),
             )
@@ -418,7 +420,7 @@ impl HandleInput for MainPanel {
                             ),
                             Box::new(self.clone()),
                             (len, tlen),
-                            Some(Box::new(color::Red)),
+                            Some(ColorEscape::red()),
                             "Errors".to_owned(),
                         )) as Box<Component>,
                     ))
@@ -556,17 +558,17 @@ impl Renderable for MainPanel {
                             && (t.error.is_some() || tracker_err) =>
                     {
                         (
-                            format!("{}{}", color::Fg(color::Cyan), color::Bg(color::Red)),
-                            format!("{}{}", color::Fg(color::Reset), color::Bg(color::Reset)),
+                            format!("{}{}", ColorEscape::cyan(), ColorEscape::red_bg()),
+                            format!("{}{}", ColorEscape::reset(), ColorEscape::reset_bg()),
                         )
                     }
                     Focus::Torrents if i + self.torrents.0 == self.torrents.1 => (
-                        format!("{}", color::Fg(color::Cyan)),
-                        format!("{}", color::Fg(color::Reset)),
+                        format!("{}", ColorEscape::cyan()),
+                        format!("{}", ColorEscape::reset()),
                     ),
                     _ if t.error.is_some() || tracker_err => (
-                        format!("{}", color::Fg(color::Red)),
-                        format!("{}", color::Fg(color::Reset)),
+                        format!("{}", ColorEscape::red()),
+                        format!("{}", ColorEscape::reset()),
                     ),
                     _ => ("".into(), "".into()),
                 };
@@ -662,16 +664,16 @@ impl Renderable for MainPanel {
                         }),
                 ) {
                     (true, true) => (
-                        format!("{}{}", color::Fg(color::Cyan), color::Bg(color::Red)),
-                        format!("{}{}", color::Fg(color::Reset), color::Bg(color::Reset)),
+                        format!("{}{}", ColorEscape::cyan(), ColorEscape::red_bg()),
+                        format!("{}{}", ColorEscape::reset(), ColorEscape::reset_bg()),
                     ),
                     (true, false) => (
-                        format!("{}", color::Fg(color::Cyan)),
-                        format!("{}", color::Fg(color::Reset)),
+                        format!("{}", ColorEscape::cyan()),
+                        format!("{}", ColorEscape::reset()),
                     ),
                     (false, true) => (
-                        format!("{}", color::Fg(color::Red)),
-                        format!("{}", color::Fg(color::Reset)),
+                        format!("{}", ColorEscape::red()),
+                        format!("{}", ColorEscape::reset()),
                     ),
                     (false, false) => ("".into(), "".into()),
                 };
@@ -1138,14 +1140,16 @@ impl Renderable for TorrentDetailsPanel {
                     self.torr.peers,
                     self.torr.trackers,
                 ),
-            ).render(target, width, 1, x_off, y_off + 3);
+            )
+            .render(target, width, 1, x_off, y_off + 3);
         }
 
         if height >= 5 {
             widgets::Text::<_, align::x::Left, align::y::Top>::new(
                 true,
                 format!("Path: {}", self.torr.path,),
-            ).render(target, width, 1, x_off, y_off + 4);
+            )
+            .render(target, width, 1, x_off, y_off + 4);
         }
     }
 }
