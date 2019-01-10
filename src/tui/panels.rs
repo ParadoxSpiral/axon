@@ -198,11 +198,15 @@ enum Focus {
 
 #[derive(Clone)]
 pub struct MainPanel {
+    last_height: u16,
     focus: Focus,
     filter: Filter,
     filter_disp: bool,
+    // FIXME: anon names
     // lower bound of torrent selection,  current pos, _
     torrents: (usize, usize, Vec<Torrent>),
+    // status, throttle up/down, ratio, right
+    torrent_widths: (usize, usize, usize, usize, usize),
     // tracker base, Vec<(tracker id, torrent_id, optional error)>
     trackers: Vec<(Tracker, Vec<(String, String, Option<String>)>)>,
     trackers_disp: bool,
@@ -212,7 +216,7 @@ pub struct MainPanel {
 }
 
 impl MainPanel {
-    pub fn new() -> MainPanel {
+    pub fn new(height: u16) -> MainPanel {
         rpc::send(CMessage::FilterSubscribe {
             serial: rpc::next_serial(),
             kind: ResourceKind::Server,
@@ -225,16 +229,67 @@ impl MainPanel {
         });
 
         MainPanel {
+            last_height: height,
             focus: Focus::Torrents,
             filter: Filter::new(),
             filter_disp: false,
             torrents: (0, 0, Vec::new()),
+            torrent_widths: (0, 0, 0, 0, 0),
             trackers: Vec::new(),
             trackers_disp: false,
             details: (0, Vec::new()),
             server: Default::default(),
             server_version: "?.?".to_owned(),
         }
+    }
+
+    fn recompute_torrent_bounds(&mut self, height: u16) {
+        self.torrent_widths.0 = 0;
+        self.torrent_widths.1 = 0;
+        self.torrent_widths.2 = 0;
+        self.torrent_widths.3 = 0;
+        for t in self
+            .torrents
+            .2
+            .iter()
+            .skip(self.torrents.0)
+            .take(height as _)
+        {
+            self.torrent_widths.0 = cmp::max(self.torrent_widths.0, t.status.as_str().len());
+            self.torrent_widths.1 = cmp::max(
+                self.torrent_widths.1,
+                t.throttle_up
+                    .map(|t| if t == -1 { 1 } else { 10 })
+                    .unwrap_or(1),
+            );
+            self.torrent_widths.2 = cmp::max(
+                self.torrent_widths.2,
+                t.throttle_down
+                    .map(|t| if t == -1 { 1 } else { 10 })
+                    .unwrap_or(1),
+            );
+            self.torrent_widths.3 = cmp::max(
+                self.torrent_widths.3,
+                if t.transferred_down == 0 {
+                    4
+                } else {
+                    3 + {
+                        let rat = t.transferred_up as f32 / t.transferred_down as f32;
+                        if rat <= 1. {
+                            1
+                        } else {
+                            (1. + rat.log10().floor()) as usize
+                        }
+                    }
+                },
+            );
+        }
+
+        self.torrent_widths.4 = 62
+            + self.torrent_widths.0
+            + self.torrent_widths.1
+            + self.torrent_widths.2
+            + self.torrent_widths.3;
     }
 }
 
@@ -244,6 +299,11 @@ impl HandleInput for MainPanel {
     fn input(&mut self, k: Key, width: u16, height: u16) -> InputResult {
         // - 2 because of the server footer
         let torr_height = height.saturating_sub(2) as usize;
+        let torr_list_height = if self.details.1.is_empty() {
+            (torr_height as u16).saturating_sub(2)
+        } else {
+            (torr_height as u16).saturating_sub(2 + 5)
+        };
 
         match (k, self.focus) {
             // Special keys
@@ -251,6 +311,7 @@ impl HandleInput for MainPanel {
                 self.focus = Focus::Torrents;
                 self.filter.reset();
                 self.filter_disp = false;
+                self.recompute_torrent_bounds(torr_list_height);
             }
 
             (Key::Esc, Focus::Filter) => {
@@ -261,6 +322,7 @@ impl HandleInput for MainPanel {
             (Key::Home, Focus::Torrents) => {
                 self.torrents.0 = 0;
                 self.torrents.1 = 0;
+                self.recompute_torrent_bounds(torr_list_height);
             }
             (Key::Home, Focus::Details) => {
                 self.details.0 = 0;
@@ -270,6 +332,7 @@ impl HandleInput for MainPanel {
                 let l = self.torrents.2.len();
                 self.torrents.0 = l.saturating_sub(torr_height);
                 self.torrents.1 = l.saturating_sub(1);
+                self.recompute_torrent_bounds(torr_list_height);
             }
             (Key::End, Focus::Details) => {
                 self.details.0 = self.details.1.len() - 1;
@@ -278,6 +341,7 @@ impl HandleInput for MainPanel {
             (Key::PageUp, Focus::Torrents) if self.torrents.1 < torr_height => {
                 self.torrents.0 = 0;
                 self.torrents.1 = 0;
+                self.recompute_torrent_bounds(torr_list_height);
             }
             (Key::PageUp, Focus::Torrents) => {
                 if self.torrents.0 < torr_height {
@@ -286,6 +350,7 @@ impl HandleInput for MainPanel {
                     self.torrents.0 -= torr_height;
                 }
                 self.torrents.1 -= torr_height;
+                self.recompute_torrent_bounds(torr_list_height);
             }
 
             (Key::PageDown, Focus::Torrents)
@@ -294,6 +359,7 @@ impl HandleInput for MainPanel {
                 let l = self.torrents.2.len();
                 self.torrents.0 = l.saturating_sub(torr_height);
                 self.torrents.1 = l.saturating_sub(1);
+                self.recompute_torrent_bounds(torr_list_height);
             }
             (Key::PageDown, Focus::Torrents) => {
                 if self.torrents.0 + 2 * torr_height >= self.torrents.2.len() {
@@ -302,6 +368,7 @@ impl HandleInput for MainPanel {
                     self.torrents.0 += torr_height;
                 }
                 self.torrents.1 += torr_height;
+                self.recompute_torrent_bounds(torr_list_height);
             }
 
             (Key::Up, Focus::Torrents) | (Key::Char('k'), Focus::Torrents)
@@ -311,6 +378,7 @@ impl HandleInput for MainPanel {
                     self.torrents.0 -= 1;
                 }
                 self.torrents.1 -= 1;
+                self.recompute_torrent_bounds(torr_list_height);
             }
 
             (Key::Down, Focus::Torrents) | (Key::Char('j'), Focus::Torrents)
@@ -320,6 +388,7 @@ impl HandleInput for MainPanel {
                     self.torrents.0 += 1;
                 }
                 self.torrents.1 += 1;
+                self.recompute_torrent_bounds(torr_list_height);
             }
 
             (Key::Left, Focus::Details) | (Key::Char('h'), Focus::Details)
@@ -351,6 +420,7 @@ impl HandleInput for MainPanel {
                     self.details.0 = self.details.1.len() - 1;
                 }
                 self.focus = Focus::Details;
+                self.recompute_torrent_bounds(torr_list_height.saturating_sub(5));
             }
 
             (Key::Char('e'), Focus::Torrents) | (Key::Char('e'), Focus::Details) => {
@@ -450,6 +520,7 @@ impl HandleInput for MainPanel {
                 self.details.1.remove(i);
                 if self.details.1.is_empty() {
                     self.focus = Focus::Torrents;
+                    self.recompute_torrent_bounds(torr_list_height.saturating_sub(5));
                 } else if i == self.details.1.len() {
                     self.details.0 -= 1;
                 }
@@ -457,6 +528,7 @@ impl HandleInput for MainPanel {
 
             (Key::Char('t'), Focus::Torrents) | (Key::Char('t'), Focus::Details) => {
                 self.trackers_disp = !self.trackers_disp;
+                self.recompute_torrent_bounds(torr_list_height.saturating_sub(5));
             }
 
             // Catch all filter input
@@ -475,7 +547,6 @@ impl HandleInput for MainPanel {
 
 impl Renderable for MainPanel {
     fn render(&mut self, target: &mut Vec<u8>, width: u16, height: u16, x_off: u16, y_off: u16) {
-        // FIXME: If the window got upsized, expand list selection if selected close to bottom
         // If the window got downsized, we need to tighten the torrent selection
         let d = self.torrents.1 - self.torrents.0;
         let sub = if self.details.1.is_empty() { 0 } else { 6 };
@@ -484,51 +555,12 @@ impl Renderable for MainPanel {
         if d > torr_height {
             self.torrents.1 -= d - torr_height;
         }
+        if height != self.last_height {
+            self.last_height = height;
+            self.recompute_torrent_bounds(height);
+        }
 
         let draw_torrents = |target: &mut _, width: u16, height, x, y| {
-            let mut width_status = 0;
-            let mut width_throttle_up = 0;
-            let mut width_throttle_down = 0;
-            let mut width_ratio = 0;
-            for t in self
-                .torrents
-                .2
-                .iter()
-                .skip(self.torrents.0)
-                .take(height as _)
-            {
-                width_status = cmp::max(width_status, t.status.as_str().len());
-                width_throttle_up = cmp::max(
-                    width_throttle_up,
-                    t.throttle_up
-                        .map(|t| if t == -1 { 1 } else { 10 })
-                        .unwrap_or(1),
-                );
-                width_throttle_down = cmp::max(
-                    width_throttle_down,
-                    t.throttle_down
-                        .map(|t| if t == -1 { 1 } else { 10 })
-                        .unwrap_or(1),
-                );
-                width_ratio = cmp::max(
-                    width_ratio,
-                    if t.transferred_down == 0 {
-                        4
-                    } else {
-                        3 + {
-                            let rat = t.transferred_up as f32 / t.transferred_down as f32;
-                            if rat <= 1. {
-                                1
-                            } else {
-                                (1. + rat.log10().floor()) as usize
-                            }
-                        }
-                    },
-                );
-            }
-
-            let width_right =
-                62 + width_status + width_throttle_up + width_throttle_down + width_ratio;
             for (i, t) in self
                 .torrents
                 .2
@@ -574,10 +606,10 @@ impl Renderable for MainPanel {
                 };
 
                 let (render_stats, width_left) =
-                    if width.saturating_sub(width_right as u16 + 1) < width / 3 {
+                    if width.saturating_sub(self.torrent_widths.4 as u16 + 1) < width / 3 {
                         (false, width)
                     } else {
-                        (true, width.saturating_sub(width_right as u16 + 1))
+                        (true, width.saturating_sub(self.torrent_widths.4 as u16 + 1))
                     };
 
                 widgets::Text::<_, align::x::Left, align::y::Top>::new(
@@ -615,17 +647,17 @@ impl Renderable for MainPanel {
                         t.transferred_up.fmt_size(),
                         t.transferred_down.fmt_size(),
                         c_e,
-                        w_status = width_status,
-                        w_tu = width_throttle_up,
-                        w_td = width_throttle_down,
-                        w_rat = width_ratio,
+                        w_status = self.torrent_widths.0,
+                        w_tu = self.torrent_widths.1,
+                        w_td = self.torrent_widths.2,
+                        w_rat = self.torrent_widths.3,
                     ),
                     )
                     .render(
                         target,
-                        cmp::min(width_right as u16, width),
+                        cmp::min(self.torrent_widths.4 as u16, width),
                         1,
-                        x + width.saturating_sub(width_right as u16),
+                        x + width.saturating_sub(self.torrent_widths.4 as u16),
                         y + i as u16,
                     );
                 }
@@ -825,9 +857,11 @@ impl HandleRpc for MainPanel {
 
                 let mut i = 0;
                 let mut dec = 0;
+                let mut recomp_bounds = false;
                 // TODO: With Closure disjoint borrows, these could be moved inside the closure
                 let sel = self.torrents.1;
                 let lower = self.torrents.0;
+                let height = self.last_height;
                 self.torrents.2.retain(|t| {
                     i += 1;
                     if ids.contains(&t.id) {
@@ -835,6 +869,9 @@ impl HandleRpc for MainPanel {
                         // in the list
                         if i <= sel - dec && sel - dec != 0 {
                             dec += 1;
+                            recomp_bounds = true;
+                        } else if i >= lower && i - lower <= height as usize {
+                            recomp_bounds = true;
                         }
                         false
                     } else {
@@ -843,6 +880,10 @@ impl HandleRpc for MainPanel {
                 });
                 self.torrents.0 -= dec;
                 self.torrents.1 -= dec;
+
+                if recomp_bounds {
+                    self.recompute_torrent_bounds(height);
+                }
 
                 i = 0;
                 dec = 0;
@@ -902,6 +943,7 @@ impl HandleRpc for MainPanel {
                     }
                     _ => None,
                 };
+                let mut recomp_bounds = false;
                 'UPDATES: for upd in resources {
                     match upd {
                         // New resource insertion
@@ -936,6 +978,13 @@ impl HandleRpc for MainPanel {
                                     })
                                     .unwrap_or_else(|e| e);
                                 name_cache.as_mut().unwrap().insert(t.id.clone(), name);
+
+                                if idx >= self.torrents.0
+                                    && idx - self.torrents.0 <= self.last_height as usize
+                                {
+                                    recomp_bounds = true;
+                                }
+
                                 self.torrents.2.insert(idx, t);
                             }
                             Resource::Tracker(t) => {
@@ -1030,6 +1079,10 @@ impl HandleRpc for MainPanel {
                         }
                         _ => (),
                     }
+                }
+                if recomp_bounds {
+                    let h = self.last_height;
+                    self.recompute_torrent_bounds(h);
                 }
                 true
             }

@@ -95,7 +95,8 @@ pub fn start() -> impl Future<Item = (), Error = ()> {
         while let Async::Ready(Some(not)) = notifications.poll()? {
             match not {
                 Notify::Login => {
-                    content = Box::new(panels::MainPanel::new());
+                    let height = termion::terminal_size().unwrap_or((0, 0)).1;
+                    content = Box::new(panels::MainPanel::new(height));
                     logged_in = true;
                     render = true;
                 }
