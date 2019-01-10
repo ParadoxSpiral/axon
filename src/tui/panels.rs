@@ -820,14 +820,20 @@ impl HandleRpc for MainPanel {
                 true
             }
             SMessage::ResourcesRemoved { ids, .. } => {
-                // FIXME: Some shittiness can go once closure disjoint field borrows land
+                // Remove matching resources, and move selection up/left if a resource up/left was
+                // removed
+
                 let mut i = 0;
                 let mut dec = 0;
-                let idx = self.torrents.1;
+                // TODO: With Closure disjoint borrows, these could be moved inside the closure
+                let sel = self.torrents.1;
+                let lower = self.torrents.0;
                 self.torrents.2.retain(|t| {
                     i += 1;
                     if ids.contains(&t.id) {
-                        if i - 1 == idx && i != 1 {
+                        // The torrents are sorted, so we need to adjust the selection if it's above
+                        // in the list
+                        if i <= sel - dec && sel - dec != 0 {
                             dec += 1;
                         }
                         false
@@ -835,16 +841,16 @@ impl HandleRpc for MainPanel {
                         true
                     }
                 });
-                self.torrents.0.saturating_sub(dec);
-                self.torrents.1.saturating_sub(dec);
+                self.torrents.0 -= dec;
+                self.torrents.1 -= dec;
 
                 i = 0;
                 dec = 0;
-                let idx = self.details.0;
+                let sel = self.details.0;
                 self.details.1.retain(|t| {
                     i += 1;
                     if ids.contains(&t.inner().id) {
-                        if i - 1 == idx && i != 1 {
+                        if i <= sel && sel - dec != 0 {
                             dec += 1;
                         }
                         false
@@ -852,7 +858,7 @@ impl HandleRpc for MainPanel {
                         true
                     }
                 });
-                self.details.0.saturating_sub(dec);
+                self.details.0 -= dec;
                 if self.details.1.is_empty() && self.focus == Focus::Details {
                     self.focus = Focus::Torrents;
                 }
