@@ -15,6 +15,7 @@
 // You should have received a copy of the GNU General Public License
 // along with Axon.  If not, see <http://www.gnu.org/licenses/>.
 
+extern crate bytes;
 extern crate chrono;
 extern crate futures;
 #[macro_use]
@@ -83,7 +84,7 @@ fn main() {
     let mut rt = Runtime::new().unwrap();
 
     rt.spawn(view::start());
-    input::start();
+    rt.spawn(input::start());
 
     if CONFIG.autoconnect {
         #[cfg(feature = "dbg")]
