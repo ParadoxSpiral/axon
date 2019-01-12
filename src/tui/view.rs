@@ -189,14 +189,13 @@ pub fn start() -> impl Future<Item = (), Error = ()> {
 
         Ok(Async::NotReady)
     })
-    .then(move |v| {
+    .then(|_| -> Result<(), ()> {
         #[cfg(feature = "dbg")]
         debug!(*::S_VIEW, "View finishing");
 
         // Unhide the cursor
-        write!(io::stdout(), "{}", cursor::Show);
+        let _ = write!(io::stdout(), "{}", cursor::Show);
 
-        process::exit(0);
-        v
+        process::exit(0)
     })
 }
