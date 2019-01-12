@@ -16,7 +16,7 @@
 // along with Axon.  If not, see <http://www.gnu.org/licenses/>.
 
 pub mod x {
-    use super::super::*;
+    use crate::utils::count_without_styling;
     use std::io::Write;
     use termion::cursor;
 

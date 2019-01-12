@@ -41,7 +41,7 @@ The config file is searched for at `$XDG_CONFIG_HOME/axon/conf.toml` and `~/.con
 For options, see `example_conf.toml`.
 
 ## Compilation dependencies
-Rust minimum version of 1.28, pkg-config, a cc, openssl/security-framework/schannel.
+Rust minimum version of 1.31, pkg-config, a cc, openssl/security-framework/schannel.
 
 
 # Windows

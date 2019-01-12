@@ -14,180 +14,34 @@
 // along with Axon.  If not, see <http://www.gnu.org/licenses/>.
 
 use natord;
-use synapse_rpc::message::{CMessage, SMessage};
-use synapse_rpc::resource::{Resource, ResourceKind, SResourceUpdate, Server, Torrent, Tracker};
-use termion::cursor;
+use synapse_rpc::{
+    message::{CMessage, SMessage},
+    resource::{Resource, ResourceKind, SResourceUpdate, Server, Torrent, Tracker},
+};
 use termion::event::Key;
 
-use std::borrow::Cow;
-use std::cmp;
-use std::cmp::Ordering;
-use std::collections::HashMap;
-use std::io::Write;
-
-use super::{widgets, Component, HandleInput, HandleRpc, InputResult, Renderable};
-use config::CONFIG;
-use utils::{
-    align::{self, x::Align},
-    color::ColorEscape,
-    filter::Filter,
-    fmt::{self, FormatSize},
+use std::{
+    borrow::Cow,
+    cmp::{self, Ordering},
+    collections::HashMap,
 };
 
-use rpc;
+use crate::{
+    rpc,
+    tui::{widgets, Component, HandleInput, HandleRpc, InputResult, Renderable},
+    utils::{
+        align,
+        color::ColorEscape,
+        filter::Filter,
+        fmt::{self, FormatSize},
+    },
+};
 
-#[derive(Clone)]
-pub struct LoginPanel {
-    server: widgets::Input,
-    pass: widgets::PasswordInput,
-    srv_selected: bool,
-}
+mod torrent_details;
+mod login;
 
-impl LoginPanel {
-    pub fn new() -> LoginPanel {
-        LoginPanel {
-            server: CONFIG
-                .server
-                .as_ref()
-                .map(|s| widgets::Input::from(s.clone(), s.len() + 1))
-                .unwrap_or_else(|| widgets::Input::from("ws://:8412".into(), 6)),
-            pass: CONFIG
-                .pass
-                .as_ref()
-                .map(|s| widgets::PasswordInput::from(s.clone(), s.len() + 1))
-                .unwrap_or_else(|| widgets::PasswordInput::with_capacity(20)),
-            srv_selected: true,
-        }
-    }
-}
-
-impl Component for LoginPanel {}
-
-impl HandleRpc for LoginPanel {
-    fn rpc(&mut self, _: SMessage) -> bool {
-        false
-    }
-}
-
-impl Renderable for LoginPanel {
-    fn render(&mut self, target: &mut Vec<u8>, width: u16, height: u16, _: u16, _: u16) {
-        let (srv, pass) = if self.srv_selected {
-            (
-                format!(
-                    "{}Server{}: {}",
-                    ColorEscape::cyan(),
-                    ColorEscape::reset(),
-                    self.server.format_active()
-                ),
-                format!("Pass: {}", self.pass.format_inactive()),
-            )
-        } else {
-            (
-                format!("Server: {}", self.server.format_inactive()),
-                format!(
-                    "{}Pass{}: {}",
-                    ColorEscape::cyan(),
-                    ColorEscape::reset(),
-                    self.pass.format_active()
-                ),
-            )
-        };
-        let lines = &[
-            "Welcome to axon, the synapse TUI",
-            "Login to a synapse instance:",
-            &srv,
-            &pass,
-        ];
-
-        write!(
-            target,
-            "{}",
-            cursor::Goto(
-                match align::x::CenterLongestLeft::align_offset(lines, width) {
-                    align::x::Alignment::Single(x) => x,
-                    _ => unreachable!(),
-                },
-                height / 3
-            )
-        )
-        .unwrap();
-        align::x::Left::align(target, lines);
-    }
-}
-
-impl HandleInput for LoginPanel {
-    fn input(&mut self, k: Key, _: u16, _: u16) -> InputResult {
-        match k {
-            Key::Home => {
-                if self.srv_selected {
-                    self.server.home();
-                } else {
-                    self.pass.home();
-                }
-            }
-
-            Key::End => {
-                if self.srv_selected {
-                    self.server.end();
-                } else {
-                    self.pass.end();
-                }
-            }
-
-            Key::Down | Key::Up | Key::Char('\t') => {
-                self.srv_selected = !self.srv_selected;
-            }
-
-            Key::Left => {
-                if self.srv_selected {
-                    self.server.cursor_left();
-                } else {
-                    self.pass.cursor_left();
-                }
-            }
-
-            Key::Right => {
-                if self.srv_selected {
-                    self.server.cursor_right();
-                } else {
-                    self.pass.cursor_right();
-                }
-            }
-
-            Key::Backspace => {
-                if self.srv_selected {
-                    self.server.backspace();
-                } else {
-                    self.pass.backspace();
-                }
-            }
-
-            Key::Delete => {
-                if self.srv_selected {
-                    self.server.delete();
-                } else {
-                    self.pass.delete();
-                }
-            }
-
-            Key::Char('\n') => {
-                rpc::start_connect(self.server.inner(), self.pass.inner()).map(|f| tokio::spawn(f));
-            }
-
-            Key::Char(c) => {
-                if self.srv_selected {
-                    self.server.push(c);
-                } else {
-                    self.pass.push(c);
-                }
-            }
-            _ => {
-                return InputResult::Key(k);
-            }
-        }
-        InputResult::Rerender
-    }
-}
+pub use self::torrent_details::TorrentDetails;
+pub use self::login::Login;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Focus {
@@ -197,7 +51,7 @@ enum Focus {
 }
 
 #[derive(Clone)]
-pub struct MainPanel {
+pub struct Main {
     last_height: u16,
     focus: Focus,
     filter: Filter,
@@ -210,13 +64,13 @@ pub struct MainPanel {
     // tracker base, Vec<(tracker id, torrent_id, optional error)>
     trackers: Vec<(Tracker, Vec<(String, String, Option<String>)>)>,
     trackers_disp: bool,
-    details: (usize, Vec<TorrentDetailsPanel>),
+    details: (usize, Vec<TorrentDetails>),
     server: Server,
     server_version: String,
 }
 
-impl MainPanel {
-    pub fn new(height: u16) -> MainPanel {
+impl Main {
+    pub fn new(height: u16) -> Main {
         rpc::send(CMessage::FilterSubscribe {
             serial: rpc::next_serial(),
             kind: ResourceKind::Server,
@@ -228,7 +82,7 @@ impl MainPanel {
             criteria: Vec::new(),
         });
 
-        MainPanel {
+        Main {
             last_height: height,
             focus: Focus::Torrents,
             filter: Filter::new(),
@@ -293,9 +147,9 @@ impl MainPanel {
     }
 }
 
-impl Component for MainPanel {}
+impl Component for Main {}
 
-impl HandleInput for MainPanel {
+impl HandleInput for Main {
     fn input(&mut self, k: Key, width: u16, height: u16) -> InputResult {
         // - 2 because of the server footer
         let torr_height = height.saturating_sub(2) as usize;
@@ -414,7 +268,7 @@ impl HandleInput for MainPanel {
                 {
                     self.details.0 = pos;
                 } else {
-                    self.details.1.push(TorrentDetailsPanel::new(
+                    self.details.1.push(TorrentDetails::new(
                         self.torrents.2[self.torrents.1].clone(),
                     ));
                     self.details.0 = self.details.1.len() - 1;
@@ -514,14 +368,12 @@ impl HandleInput for MainPanel {
             }
 
             (Key::Char('q'), Focus::Details) => {
-                // FIXME: NLL
-                let i = self.details.0;
                 // This is ok, because details only focused when not empty
-                self.details.1.remove(i);
+                self.details.1.remove(self.details.0);
                 if self.details.1.is_empty() {
                     self.focus = Focus::Torrents;
                     self.recompute_torrent_bounds(torr_list_height.saturating_sub(5));
-                } else if i == self.details.1.len() {
+                } else if self.details.0 == self.details.1.len() {
                     self.details.0 -= 1;
                 }
             }
@@ -545,7 +397,7 @@ impl HandleInput for MainPanel {
     }
 }
 
-impl Renderable for MainPanel {
+impl Renderable for Main {
     fn render(&mut self, target: &mut Vec<u8>, width: u16, height: u16, x_off: u16, y_off: u16) {
         // If the window got downsized, we need to tighten the torrent selection
         let d = self.torrents.1 - self.torrents.0;
@@ -728,7 +580,7 @@ impl Renderable for MainPanel {
             widgets::BorrowedSameTabs::new(
                 unsafe {
                     ::std::slice::from_raw_parts_mut(
-                        self.details.1.as_ptr() as *mut TorrentDetailsPanel,
+                        self.details.1.as_ptr() as *mut TorrentDetails,
                         self.details.1.len(),
                     )
                 },
@@ -844,7 +696,7 @@ impl Renderable for MainPanel {
     }
 }
 
-impl HandleRpc for MainPanel {
+impl HandleRpc for Main {
     fn rpc(&mut self, msg: SMessage) -> bool {
         match msg {
             SMessage::RpcVersion(ver) => {
@@ -952,7 +804,7 @@ impl HandleRpc for MainPanel {
                                 self.server = s;
                             }
                             Resource::Torrent(t) => {
-                                let mut name = t
+                                let name = t
                                     .name
                                     .as_ref()
                                     .map(|n| n.to_lowercase())
@@ -1090,147 +942,3 @@ impl HandleRpc for MainPanel {
         }
     }
 }
-
-#[derive(Clone)]
-struct TorrentDetailsPanel {
-    torr: Torrent,
-}
-impl TorrentDetailsPanel {
-    fn new(torr: Torrent) -> TorrentDetailsPanel {
-        TorrentDetailsPanel { torr }
-    }
-    fn inner(&self) -> &Torrent {
-        &self.torr
-    }
-    fn inner_mut(&mut self) -> &mut Torrent {
-        &mut self.torr
-    }
-}
-
-impl Renderable for TorrentDetailsPanel {
-    fn name(&self) -> String {
-        self.torr
-            .name
-            .as_ref()
-            .unwrap_or_else(|| &self.torr.path)
-            .clone()
-    }
-    fn render(&mut self, target: &mut Vec<u8>, width: u16, height: u16, x_off: u16, y_off: u16) {
-        if height >= 1 {
-            widgets::Text::<_, align::x::Left, align::y::Top>::new(
-                true,
-                format!(
-                    "{}, {}    Picker: {:?}    Created: {} ago    Modified: {} ago",
-                    if self.torr.private {
-                        "Private"
-                    } else {
-                        "Public"
-                    },
-                    self.torr.status.as_str(),
-                    self.torr.strategy,
-                    fmt::date_diff_now(self.torr.created),
-                    fmt::date_diff_now(self.torr.modified),
-                ),
-            )
-            .render(target, width, 1, x_off, y_off);
-        }
-
-        if height >= 2 {
-            widgets::Text::<_, align::x::Left, align::y::Top>::new(
-                true,
-                format!(
-                    "Rates: {}[{}]↑ {}[{}]↓    Lifetime: {:.2} {}↑ {}↓",
-                    self.torr.rate_up.fmt_size(),
-                    self.torr
-                        .throttle_up
-                        .map(|t| if t == -1 { "∞".into() } else { t.fmt_size() })
-                        .unwrap_or_else(|| "*".into()),
-                    self.torr.rate_down.fmt_size(),
-                    self.torr
-                        .throttle_down
-                        .map(|t| if t == -1 { "∞".into() } else { t.fmt_size() })
-                        .unwrap_or_else(|| "*".into()),
-                    if self.torr.transferred_down == 0 {
-                        1.
-                    } else {
-                        self.torr.transferred_up as f32 / self.torr.transferred_down as f32
-                    },
-                    self.torr.transferred_up.fmt_size(),
-                    self.torr.transferred_down.fmt_size(),
-                ),
-            )
-            .render(target, width, 1, x_off, y_off + 1);
-        }
-
-        if height >= 3 {
-            widgets::Text::<_, align::x::Left, align::y::Top>::new(
-                true,
-                format!(
-                    "Size: {}    Progress: {}%    Availability: {}%    Priority: {}",
-                    self.torr
-                        .size
-                        .map(|p| p.fmt_size())
-                        .unwrap_or_else(|| "?".into()),
-                    (self.torr.progress * 100.).round(),
-                    (self.torr.availability * 100.).round(),
-                    self.torr.priority,
-                ),
-            )
-            .render(target, width, 1, x_off, y_off + 2);
-        }
-
-        if height >= 4 {
-            widgets::Text::<_, align::x::Left, align::y::Top>::new(
-                true,
-                format!(
-                    "Files: {}    Pieces: {}    P-size: {}    Peers: {}    Trackers: {}",
-                    self.torr
-                        .files
-                        .map(|f| format!("{}", f))
-                        .unwrap_or_else(|| "?".into()),
-                    self.torr
-                        .pieces
-                        .map(|p| format!("{}", p))
-                        .unwrap_or_else(|| "?".into()),
-                    self.torr
-                        .piece_size
-                        .map(|p| p.fmt_size())
-                        .unwrap_or_else(|| "?".into()),
-                    self.torr.peers,
-                    self.torr.trackers,
-                ),
-            )
-            .render(target, width, 1, x_off, y_off + 3);
-        }
-
-        if height >= 5 {
-            widgets::Text::<_, align::x::Left, align::y::Top>::new(
-                true,
-                format!("Path: {}", self.torr.path,),
-            )
-            .render(target, width, 1, x_off, y_off + 4);
-        }
-    }
-}
-
-/*
-struct LimitsPanel {
-    server: Server,
-    torrent: Option<Torrent>,
-}
-
-impl Component for LimitsPanel {}
-
-impl HandleRpc for LimitsPanel {
-    fn init()
-}
-
-impl HandleInput for LimitsPanel {
-    fn input(&mut self, ctx: &RpcContext, k: Key, _: u16, _: u16 ) {
-        
-    }
-}
-
-impl Renderable for LimitsPanel {
-    
-}*/

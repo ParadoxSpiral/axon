@@ -16,22 +16,27 @@
 // along with Axon.  If not, see <http://www.gnu.org/licenses/>.
 
 use futures::sync::mpsc;
+use lazy_static::lazy_static;
 use parking_lot::Mutex;
 use serde_json;
-use synapse_rpc;
-use synapse_rpc::message::{CMessage, SMessage};
+use synapse_rpc::{
+    self,
+    message::{CMessage, SMessage},
+};
 use tokio::prelude::*;
 use url::Url;
-use ws;
-use ws::tungstenite::Message;
+use ws::{self, tungstenite::Message};
 
-use std::error::Error;
-use std::sync::atomic::{AtomicUsize, Ordering};
-use std::sync::Arc;
-use std::time::Duration;
+use std::{
+    error::Error,
+    sync::{
+        atomic::{AtomicUsize, Ordering},
+        Arc,
+    },
+    time::Duration,
+};
 
-use tui::view::Notify;
-use utils::color::ColorEscape;
+use crate::{tui::view::Notify, utils::color::ColorEscape};
 
 enum WaiterMsg {
     Send(Message),
@@ -53,7 +58,7 @@ pub fn next_serial() -> u64 {
 
 pub fn send(msg: CMessage) {
     #[cfg(feature = "dbg")]
-    debug!(*::S_RPC, "Sending {:#?}", msg);
+    debug!(*crate::S_RPC, "Sending {:#?}", msg);
     send_raw(Message::Text(serde_json::to_string(&msg).unwrap()));
 }
 
@@ -63,13 +68,13 @@ fn send_raw(msg: Message) {
 
 pub fn disconnect() {
     #[cfg(feature = "dbg")]
-    debug!(*::S_RPC, "RPC should disconnect");
+    debug!(*crate::S_RPC, "RPC should disconnect");
     WAKER.0.lock().try_send(WaiterMsg::Close).unwrap();
 }
 
 pub fn start_connect(srv: &str, pass: &str) -> Option<impl Future<Item = (), Error = ()>> {
     #[cfg(feature = "dbg")]
-    trace!(*::S_RPC, "RPC should connect");
+    trace!(*crate::S_RPC, "RPC should connect");
 
     let mut url = match Url::parse(srv) {
         Ok(u) => u,
@@ -97,7 +102,7 @@ pub fn start_connect(srv: &str, pass: &str) -> Option<impl Future<Item = (), Err
             })
             .map(move |(stream, _)| {
                 #[cfg(feature = "dbg")]
-                trace!(*::S_RPC, "RPC connected");
+                trace!(*crate::S_RPC, "RPC connected");
 
                 Notify::login();
 
@@ -180,7 +185,7 @@ pub fn start_connect(srv: &str, pass: &str) -> Option<impl Future<Item = (), Err
                                     }
                                     SMessage::ResourcesRemoved { serial, ids } => {
                                         #[cfg(feature = "dbg")]
-                                        debug!(*::S_RPC, "ResourcesRemoved: {:#?}", ids);
+                                        debug!(*crate::S_RPC, "ResourcesRemoved: {:#?}", ids);
 
                                         send(CMessage::Unsubscribe {
                                             serial: next_serial(),
@@ -195,7 +200,7 @@ pub fn start_connect(srv: &str, pass: &str) -> Option<impl Future<Item = (), Err
                                                 && synapse_rpc::MAJOR_VERSION == 0)
                                         {
                                             #[cfg(feature = "dbg")]
-                                            warn!(*::S_RPC, "RPC version mismatch");
+                                            warn!(*crate::S_RPC, "RPC version mismatch");
 
                                             Notify::overlay(
                                                 "RPC".to_string(),
@@ -216,7 +221,7 @@ pub fn start_connect(srv: &str, pass: &str) -> Option<impl Future<Item = (), Err
                                     }
                                     _ => {
                                         #[cfg(feature = "dbg")]
-                                        debug!(*::S_RPC, "Received: {:#?}", msg);
+                                        debug!(*crate::S_RPC, "Received: {:#?}", msg);
 
                                         Notify::rpc(msg);
                                         Ok(())
@@ -236,7 +241,7 @@ pub fn start_connect(srv: &str, pass: &str) -> Option<impl Future<Item = (), Err
                             while let Ok(Async::Ready(_)) = waker.poll() {}
 
                             #[cfg(feature = "dbg")]
-                            debug!(*::S_RPC, "RPC disconnected");
+                            debug!(*crate::S_RPC, "RPC disconnected");
                         }),
                 );
             }),

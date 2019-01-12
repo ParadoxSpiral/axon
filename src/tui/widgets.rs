@@ -14,22 +14,25 @@
 // along with Axon.  If not, see <http://www.gnu.org/licenses/>.
 
 use synapse_rpc::message::SMessage;
-use termion::event::Key;
-use termion::{cursor, style};
+use termion::{cursor, event::Key, style};
 use unicode_segmentation::UnicodeSegmentation;
 
-use std::borrow::{Borrow, BorrowMut};
-use std::io::Write;
-use std::marker::PhantomData;
-use std::mem::ManuallyDrop;
-use std::ops::Range;
-use std::str;
+use std::{
+    borrow::{Borrow, BorrowMut},
+    io::Write,
+    marker::PhantomData,
+    mem::ManuallyDrop,
+    ops::Range,
+    str,
+};
 
-use super::{Component, HandleInput, HandleRpc, InputResult, Renderable};
-use utils::{
-    self,
-    align::{self, x, y},
-    color::ColorEscape,
+use crate::{
+    tui::{Component, HandleInput, HandleRpc, InputResult, Renderable},
+    utils::{
+        self,
+        align::{self, x, y},
+        color::ColorEscape,
+    },
 };
 
 // TODO: Splitup in render and util widgets
@@ -239,13 +242,12 @@ where
         // Draw header
         let n_tabs = self.tabs.len();
         let sec_len = width / n_tabs as u16;
-        // FIXME: NLL (probably)
-        let div_budget = "─".repeat(width.saturating_sub(self.tabs.iter().fold(0, |acc, t| {
-            acc + utils::count_without_styling(&t.borrow().name())
-        })) as usize);
+        let div_budget = "─"
+            .repeat(width.saturating_sub(self.tabs.iter().fold(0, |acc, t| {
+                acc + utils::count_without_styling(&t.borrow().name())
+            })) as usize);
         let mut div_budget = div_budget.chars();
         let div_budget = div_budget.by_ref();
-        let n_tabs = self.tabs.len();
         for (i, t) in self.tabs.iter_mut().enumerate() {
             let t = (*t).borrow_mut();
             let div_len = sec_len.saturating_sub(utils::count_without_styling(&t.name())) / 2;
@@ -701,7 +703,8 @@ impl Input {
                 .and_then(|pos| {
                     assert!(pos > 0);
                     Some(pos)
-                }).unwrap_or_else(|| content.graphemes(true).count() + 1),
+                })
+                .unwrap_or_else(|| content.graphemes(true).count() + 1),
             content,
         }
     }

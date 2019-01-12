@@ -15,14 +15,17 @@
 // You should have received a copy of the GNU General Public License
 // along with Axon.  If not, see <http://www.gnu.org/licenses/>.
 
-use synapse_rpc::criterion::{Criterion, Operation, Value};
-use synapse_rpc::message::CMessage;
-use synapse_rpc::resource::ResourceKind;
-use termion::color;
-use termion::event::Key;
+use synapse_rpc::{
+    criterion::{Criterion, Operation, Value},
+    message::CMessage,
+    resource::ResourceKind,
+};
+use termion::{color, event::Key};
 
-use rpc;
-use tui::{widgets, HandleInput, InputResult};
+use crate::{
+    rpc,
+    tui::{widgets, HandleInput, InputResult},
+};
 
 #[derive(Clone)]
 enum FilterMode {
@@ -79,7 +82,7 @@ impl Filter {
         let mut criteria = Vec::with_capacity(1);
         let mut name = String::new();
 
-        for mut w in self.input.inner().split_whitespace() {
+        for w in self.input.inner().split_whitespace() {
             let mut l = w.char_indices();
             // This guards against bigger than 1 byte code points, and a criterion not having been
             // fully written yet

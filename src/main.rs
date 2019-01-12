@@ -15,26 +15,9 @@
 // You should have received a copy of the GNU General Public License
 // along with Axon.  If not, see <http://www.gnu.org/licenses/>.
 
-extern crate bytes;
-extern crate chrono;
-extern crate futures;
-#[macro_use]
-extern crate lazy_static;
-extern crate natord;
-extern crate parking_lot;
-extern crate serde;
 #[macro_use]
 extern crate serde_derive;
-extern crate serde_json;
-extern crate shellexpand;
-extern crate synapse_rpc;
-extern crate termion;
-extern crate tokio;
 extern crate tokio_tungstenite as ws;
-extern crate toml;
-extern crate unicode_segmentation;
-extern crate unicode_width;
-extern crate url;
 
 #[cfg(feature = "dbg")]
 #[cfg_attr(feature = "dbg", macro_use)]
@@ -50,11 +33,11 @@ mod rpc;
 mod tui;
 mod utils;
 
-use tokio::prelude::*;
-use tokio::runtime::Runtime;
+use tokio::{prelude::*, runtime::Runtime};
+#[cfg(feature = "dbg")]
+use lazy_static::lazy_static;
 
-use config::CONFIG;
-use tui::view;
+use crate::{config::CONFIG, tui::view};
 
 #[cfg(feature = "dbg")]
 lazy_static! {

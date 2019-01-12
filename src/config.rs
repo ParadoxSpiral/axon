@@ -13,12 +13,11 @@
 // You should have received a copy of the GNU General Public License
 // along with Axon.  If not, see <http://www.gnu.org/licenses/>.
 
+use lazy_static::lazy_static;
 use shellexpand;
 use toml;
 
-use std::fs::File;
-use std::io::Read;
-use std::path::Path;
+use std::{fs::File, io::Read, path::Path};
 
 lazy_static! {
     pub static ref CONFIG: Config = {

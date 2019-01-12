@@ -14,23 +14,24 @@
 // along with Axon.  If not, see <http://www.gnu.org/licenses/>.
 
 use futures::sync::mpsc;
+use lazy_static::lazy_static;
 use parking_lot::Mutex;
 use synapse_rpc::message::SMessage;
-use termion::event::Key;
-use termion::raw::IntoRawMode;
-use termion::{self, clear, cursor};
-use tokio::prelude::*;
-use tokio::timer;
+use termion::{self, clear, cursor, event::Key, raw::IntoRawMode};
+use tokio::{prelude::*, timer};
 
-use std::cmp;
-use std::io::{self, Write};
-use std::mem;
-use std::process;
-use std::time::{Duration, Instant};
+use std::{
+    cmp,
+    io::{self, Write},
+    mem, process,
+    time::{Duration, Instant},
+};
 
-use super::{panels, widgets, Component, InputResult};
-use rpc;
-use utils::{align, color::ColorEscape};
+use crate::{
+    rpc,
+    tui::{panels, widgets, Component, InputResult},
+    utils::{align, color::ColorEscape},
+};
 
 lazy_static! {
     static ref NOTIFICATIONS: (
@@ -78,10 +79,9 @@ pub fn start() -> impl Future<Item = (), Error = ()> {
     let size = termion::terminal_size().unwrap_or((0, 0));
     let mut render_buffer = Vec::with_capacity(size.0 as usize * size.1 as usize + 1);
     let mut out = io::stdout().into_raw_mode().unwrap();
+    write!(out, "{}", cursor::Hide).unwrap();
 
-    write!(render_buffer, "{}", cursor::Hide).unwrap();
-
-    let mut content: Box<Component> = Box::new(panels::LoginPanel::new());
+    let mut content: Box<Component> = Box::new(panels::Login::new());
     let mut logged_in = false;
 
     let mut interval = timer::Interval::new(Instant::now(), Duration::from_secs(1));
@@ -96,14 +96,14 @@ pub fn start() -> impl Future<Item = (), Error = ()> {
             match not {
                 Notify::Login => {
                     let height = termion::terminal_size().unwrap_or((0, 0)).1;
-                    content = Box::new(panels::MainPanel::new(height));
+                    content = Box::new(panels::Main::new(height));
                     logged_in = true;
                     render = true;
                 }
                 // RPC was closed, since we can't differentiate between regular closal and
                 // errors in the RPC future, we use this workaround
                 Notify::Close if logged_in => {
-                    content = Box::new(panels::LoginPanel::new());
+                    content = Box::new(panels::Login::new());
                     logged_in = false;
                     render = true;
                 }
@@ -116,7 +116,7 @@ pub fn start() -> impl Future<Item = (), Error = ()> {
                 }
                 Notify::Input(Key::Ctrl('q')) if logged_in => {
                     #[cfg(feature = "dbg")]
-                    debug!(*::S_VIEW, "Disconnecting");
+                    debug!(*crate::S_VIEW, "Disconnecting");
 
                     // `logged_in` is set to false in Task::Close for simplicity
                     rpc::disconnect();
@@ -124,7 +124,7 @@ pub fn start() -> impl Future<Item = (), Error = ()> {
                 }
                 Notify::Input(Key::Ctrl('q')) => {
                     #[cfg(feature = "dbg")]
-                    debug!(*::S_VIEW, "Closing");
+                    debug!(*crate::S_VIEW, "Closing");
 
                     return Ok(Async::Ready(()));
                 }
@@ -191,7 +191,7 @@ pub fn start() -> impl Future<Item = (), Error = ()> {
     })
     .then(|_| -> Result<(), ()> {
         #[cfg(feature = "dbg")]
-        debug!(*::S_VIEW, "View finishing");
+        debug!(*crate::S_VIEW, "View finishing");
 
         // Unhide the cursor
         let _ = write!(io::stdout(), "{}", cursor::Show);
