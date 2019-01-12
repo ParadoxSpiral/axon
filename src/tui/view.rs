@@ -25,6 +25,7 @@ use tokio::timer;
 use std::cmp;
 use std::io::{self, Write};
 use std::mem;
+use std::process;
 use std::time::{Duration, Instant};
 
 use super::{panels, widgets, Component, InputResult};
@@ -32,82 +33,45 @@ use rpc;
 use utils::align;
 
 lazy_static! {
-    static ref RPC: (
-        Mutex<mpsc::UnboundedSender<SMessage<'static>>>,
-        Mutex<Option<mpsc::UnboundedReceiver<SMessage<'static>>>>
-    ) = {
-        let (s, r) = mpsc::unbounded();
-        (Mutex::new(s), Mutex::new(Some(r)))
-    };
-    static ref INPUT: (
-        Mutex<mpsc::UnboundedSender<Key>>,
-        Mutex<Option<mpsc::UnboundedReceiver<Key>>>
-    ) = {
-        let (s, r) = mpsc::unbounded();
-        (Mutex::new(s), Mutex::new(Some(r)))
-    };
-    static ref TASKS: (
-        Mutex<mpsc::UnboundedSender<Task>>,
-        Mutex<Option<mpsc::UnboundedReceiver<Task>>>
+    static ref NOTIFICATIONS: (
+        Mutex<mpsc::UnboundedSender<Notify>>,
+        Mutex<Option<mpsc::UnboundedReceiver<Notify>>>
     ) = {
         let (s, r) = mpsc::unbounded();
         (Mutex::new(s), Mutex::new(Some(r)))
     };
 }
 
-pub enum Task {
+pub enum Notify {
     Login,
+    Close,
+    Input(Key),
+    Rpc(SMessage<'static>),
     // name, text, color
     Overlay(String, String, Option<Box<dyn color::Color + Send + Sync>>),
-    Close,
 }
 
 // We don't care about the errors, because it only signifies closal, which implies shutdown
 #[allow(unused_must_use)]
-impl Task {
+impl Notify {
     pub fn login() {
-        TASKS.0.lock().unbounded_send(Task::Login);
+        NOTIFICATIONS.0.lock().unbounded_send(Notify::Login);
     }
     pub fn close() {
-        TASKS.0.lock().unbounded_send(Task::Close);
+        NOTIFICATIONS.0.lock().unbounded_send(Notify::Close);
+    }
+    pub fn input(key: Key) {
+        NOTIFICATIONS.0.lock().unbounded_send(Notify::Input(key));
+    }
+    pub fn rpc(msg: SMessage<'static>) {
+        NOTIFICATIONS.0.lock().unbounded_send(Notify::Rpc(msg));
     }
     pub fn overlay(name: String, text: String, color: Option<Box<dyn color::Color + Send + Sync>>) {
-        TASKS
+        NOTIFICATIONS
             .0
             .lock()
-            .unbounded_send(Task::Overlay(name, text, color));
+            .unbounded_send(Notify::Overlay(name, text, color));
     }
-}
-
-pub fn notify_rpc(msg: SMessage<'static>) {
-    let _ = RPC.0.lock().unbounded_send(msg);
-}
-
-pub fn notify_input(k: Key) {
-    let _ = INPUT.0.lock().unbounded_send(k);
-}
-
-macro_rules! handle_ipc {
-    ($queue:ident, $fun:expr) => {
-        loop {
-            match $queue.poll() {
-                Err(_) => {
-                    rpc::disconnect();
-                    return Err(());
-                }
-                Ok(Async::Ready(Some(msg))) => {
-                    // Return early, can't do this directly because closures
-                    if $fun(msg) {
-                        return Ok(Async::Ready(()));
-                    }
-                }
-                // Not ready, or stream finished
-                _ => {
-                    break;
-                }
-            }
-        }
-    };
 }
 
 pub fn start() -> impl Future<Item = (), Error = ()> {
@@ -123,90 +87,60 @@ pub fn start() -> impl Future<Item = (), Error = ()> {
     let mut interval = timer::Interval::new(Instant::now(), Duration::from_secs(1));
 
     // Hack to avoid having to reaquire lock in each loop iteration
-    let mut rpc = None;
-    let mut input = None;
-    let mut tasks = None;
-    mem::swap(&mut *RPC.1.lock(), &mut rpc);
-    mem::swap(&mut *INPUT.1.lock(), &mut input);
-    mem::swap(&mut *TASKS.1.lock(), &mut tasks);
-    let mut rpc = rpc.unwrap();
-    let mut input = input.unwrap();
-    let mut tasks = tasks.unwrap();
+    let mut notifications = mem::replace(&mut *NOTIFICATIONS.1.lock(), None).unwrap();
 
     future::poll_fn(move || {
-        let mut render = false;
+        let mut render = interval.poll().map_err(|_| ())?.is_ready();
 
-        handle_ipc!(rpc, |msg| {
-            content.rpc(msg);
-            render = true;
-            false
-        });
-
-        handle_ipc!(input, |key| {
-            let res = match key {
-                Key::Ctrl('q') => {
-                    if logged_in {
-                        #[cfg(feature = "dbg")]
-                        debug!(*::S_VIEW, "Disconnecting");
-
-                        // `logged_in` is set to false in Task::Close for simplicity
-                        rpc::disconnect();
-
-                        InputResult::Rerender
-                    } else {
-                        #[cfg(feature = "dbg")]
-                        debug!(*::S_VIEW, "Closing");
-
-                        InputResult::Close
-                    }
-                }
-                _ => {
-                    let s = termion::terminal_size().unwrap_or((0, 0));
-                    match content.input(key, s.0, s.1) {
-                        InputResult::ReplaceWith(other) => {
-                            mem::replace(&mut content, other);
-                            InputResult::Rerender
-                        }
-                        res => res,
-                    }
-                }
-            };
-            match res {
-                InputResult::Rerender => {
-                    render = true;
-                }
-                InputResult::Close => {
-                    rpc.close();
-                    input.close();
-                    tasks.close();
-                    return true;
-                }
-                _ => (),
-            }
-
-            false
-        });
-
-        handle_ipc!(tasks, |task| {
-            match task {
-                Task::Login => {
+        while let Async::Ready(Some(not)) = notifications.poll()? {
+            match not {
+                Notify::Login => {
                     content = Box::new(panels::MainPanel::new());
                     logged_in = true;
                     render = true;
                 }
-                Task::Close => {
-                    // RPC was closed, since we can't differentiate between regular closal and
-                    // errors in the RPC future, we use this workaround
-                    if logged_in {
-                        content = Box::new(panels::LoginPanel::new());
-                        logged_in = false;
-                        render = true;
-                    } else {
-                        // There was an error
-                        return true;
+                // RPC was closed, since we can't differentiate between regular closal and
+                // errors in the RPC future, we use this workaround
+                Notify::Close if logged_in => {
+                    content = Box::new(panels::LoginPanel::new());
+                    logged_in = false;
+                    render = true;
+                }
+                Notify::Close => {
+                    return Err(());
+                }
+                Notify::Rpc(msg) => {
+                    content.rpc(msg);
+                    render = true;
+                }
+                Notify::Input(Key::Ctrl('q')) if logged_in => {
+                    #[cfg(feature = "dbg")]
+                    debug!(*::S_VIEW, "Disconnecting");
+
+                    // `logged_in` is set to false in Task::Close for simplicity
+                    rpc::disconnect();
+                    render = true;
+                }
+                Notify::Input(Key::Ctrl('q')) => {
+                    #[cfg(feature = "dbg")]
+                    debug!(*::S_VIEW, "Closing");
+
+                    return Ok(Async::Ready(()));
+                }
+                Notify::Input(key) => {
+                    let s = termion::terminal_size().unwrap_or((0, 0));
+                    match content.input(key, s.0, s.1) {
+                        InputResult::ReplaceWith(other) => {
+                            mem::replace(&mut content, other);
+                            render = true;
+                        }
+                        InputResult::Rerender => {
+                            render = true;
+                        }
+                        _ => (),
                     }
                 }
-                Task::Overlay(name, text, color) => {
+                Notify::Overlay(name, text, color) => {
                     // Because we can't move the component out, we need to use this hack
                     // This is only safe because we leak ct below, so that it won't get freed
                     let alias_cur = unsafe { Box::from_raw((&mut *content) as *mut Component) };
@@ -236,15 +170,6 @@ pub fn start() -> impl Future<Item = (), Error = ()> {
                     render = true;
                 }
             }
-
-            false
-        });
-
-        if !render {
-            handle_ipc!(interval, |_| {
-                render = true;
-                false
-            });
         }
 
         if render {
@@ -270,6 +195,7 @@ pub fn start() -> impl Future<Item = (), Error = ()> {
         // Unhide the cursor
         write!(io::stdout(), "{}", cursor::Show);
 
+        process::exit(0);
         v
     })
 }

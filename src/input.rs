@@ -18,7 +18,7 @@
 use termion::color;
 use termion::input::TermRead;
 
-use tui::view::{self, Task};
+use tui::view::Notify;
 
 pub fn start() {
     ::std::thread::spawn(|| {
@@ -26,10 +26,10 @@ pub fn start() {
         for ev in stdin.lock().keys() {
             match ev {
                 Ok(k) => {
-                    view::notify_input(k);
+                    Notify::input(k);
                 }
                 Err(e) => {
-                    Task::overlay(
+                    Notify::overlay(
                         "Input".to_owned(),
                         e.to_string(),
                         Some(Box::new(color::Red)),

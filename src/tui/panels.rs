@@ -333,8 +333,7 @@ impl HandleInput for MainPanel {
             }
 
             // Key::Char
-            (Key::Char('\n'), Focus::Torrents) => unimplemented!("OPEN DIR"),
-
+            //(Key::Char('\n'), Focus::Torrents) => unimplemented!("OPEN DIR"),
             (Key::Char('d'), Focus::Torrents) if !self.torrents.2.is_empty() => {
                 if let Some(pos) = self
                     .details

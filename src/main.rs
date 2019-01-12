@@ -88,7 +88,7 @@ fn main() {
     if CONFIG.autoconnect {
         #[cfg(feature = "dbg")]
         info!(*S_VIEW, "Autoconnecting");
-        rpc::start_connect(
+        if let Some(rpc) = rpc::start_connect(
             &*CONFIG.server.clone().unwrap(),
             CONFIG
                 .pass
@@ -96,9 +96,12 @@ fn main() {
                 .as_ref()
                 .map(|p| &**p)
                 .unwrap_or_else(|| ""),
-        )
-        .map(|f| rt.spawn(f));
+        ) {
+            rt.spawn(rpc);
+        }
     }
 
+    // Actual shutdown happens via process::exit to avoid having to pass a bunch of shutdown
+    // messages around, this just keeps the process running until exited in the view::start future
     rt.shutdown_on_idle().wait().unwrap();
 }

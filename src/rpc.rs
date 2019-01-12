@@ -31,14 +31,14 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 
-use tui::view::{self, Task};
+use tui::view::Notify;
 
 enum WaiterMsg {
     Send(Message),
     Close,
 }
 
-lazy_static!{
+lazy_static! {
     static ref WAKER: (Mutex<mpsc::Sender<WaiterMsg>>, Mutex<mpsc::Receiver<WaiterMsg>>) = {
         let (s, r) = mpsc::channel(10);
         (Mutex::new(s), Mutex::new(r))
@@ -74,7 +74,7 @@ pub fn start_connect(srv: &str, pass: &str) -> Option<impl Future<Item = (), Err
     let mut url = match Url::parse(srv) {
         Ok(u) => u,
         Err(e) => {
-            Task::overlay("Url".to_owned(), e.to_string(), Some(Box::new(color::Red)));
+            Notify::overlay("Url".to_owned(), e.to_string(), Some(Box::new(color::Red)));
             return None;
         }
     };
@@ -85,7 +85,7 @@ pub fn start_connect(srv: &str, pass: &str) -> Option<impl Future<Item = (), Err
             .map_err(|err| format!("{:?}", err))
             .timeout(Duration::from_secs(10))
             .map_err(|e| {
-                Task::overlay(
+                Notify::overlay(
                     "RPC".into(),
                     if e.is_timer() {
                         "Timeout while connecting to server (10s)".to_owned()
@@ -99,7 +99,7 @@ pub fn start_connect(srv: &str, pass: &str) -> Option<impl Future<Item = (), Err
                 #[cfg(feature = "dbg")]
                 trace!(*::S_RPC, "RPC connected");
 
-                Task::login();
+                Notify::login();
 
                 let (sink, stream) = stream.split();
                 let sink1 = Arc::new(Mutex::new(sink));
@@ -108,7 +108,7 @@ pub fn start_connect(srv: &str, pass: &str) -> Option<impl Future<Item = (), Err
                 tokio::spawn(
                     stream
                         .map_err(|e| {
-                            Task::overlay(
+                            Notify::overlay(
                                 "RPC".to_owned(),
                                 e.to_string(),
                                 Some(Box::new(color::Red)),
@@ -138,7 +138,7 @@ pub fn start_connect(srv: &str, pass: &str) -> Option<impl Future<Item = (), Err
                                                     Ok(Async::Ready(()))
                                                 } else {
                                                     sink.lock().poll_complete().map_err(|e| {
-                                                        Task::overlay(
+                                                        Notify::overlay(
                                                             "RPC".to_owned(),
                                                             e.to_string(),
                                                             Some(Box::new(color::Red)),
@@ -164,7 +164,7 @@ pub fn start_connect(srv: &str, pass: &str) -> Option<impl Future<Item = (), Err
                             Message::Ping(p) => Ok(send_raw(Message::Pong(p))),
                             Message::Text(s) => match serde_json::from_str::<SMessage>(&s) {
                                 Err(e) => {
-                                    Task::overlay(
+                                    Notify::overlay(
                                         "RPC".to_owned(),
                                         e.description().to_string(),
                                         Some(Box::new(color::Red)),
@@ -186,10 +186,7 @@ pub fn start_connect(srv: &str, pass: &str) -> Option<impl Future<Item = (), Err
                                             serial: next_serial(),
                                             ids: ids.clone(),
                                         });
-                                        view::notify_rpc(SMessage::ResourcesRemoved {
-                                            serial,
-                                            ids,
-                                        });
+                                        Notify::rpc(SMessage::ResourcesRemoved { serial, ids });
                                         Ok(())
                                     }
                                     SMessage::RpcVersion(ver) => {
@@ -200,7 +197,7 @@ pub fn start_connect(srv: &str, pass: &str) -> Option<impl Future<Item = (), Err
                                             #[cfg(feature = "dbg")]
                                             warn!(*::S_RPC, "RPC version mismatch");
 
-                                            Task::overlay(
+                                            Notify::overlay(
                                                 "RPC".to_string(),
                                                 format!(
                                                     "Server version {:?} \
@@ -213,7 +210,7 @@ pub fn start_connect(srv: &str, pass: &str) -> Option<impl Future<Item = (), Err
                                             );
                                             Err(())
                                         } else {
-                                            view::notify_rpc(SMessage::RpcVersion(ver));
+                                            Notify::rpc(SMessage::RpcVersion(ver));
                                             Ok(())
                                         }
                                     }
@@ -221,7 +218,7 @@ pub fn start_connect(srv: &str, pass: &str) -> Option<impl Future<Item = (), Err
                                         #[cfg(feature = "dbg")]
                                         debug!(*::S_RPC, "Received: {:#?}", msg);
 
-                                        view::notify_rpc(msg);
+                                        Notify::rpc(msg);
                                         Ok(())
                                     }
                                 },
@@ -229,7 +226,7 @@ pub fn start_connect(srv: &str, pass: &str) -> Option<impl Future<Item = (), Err
                             _ => unreachable!(),
                         })
                         .map_err(move |_| {
-                            Task::close();
+                            Notify::close();
 
                             SERIAL.store(0, Ordering::Release);
                             sink2.lock().close().unwrap();
