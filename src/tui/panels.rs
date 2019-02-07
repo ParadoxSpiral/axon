@@ -37,11 +37,11 @@ use crate::{
     },
 };
 
-mod torrent_details;
 mod login;
+mod torrent_details;
 
-pub use self::torrent_details::TorrentDetails;
 pub use self::login::Login;
+pub use self::torrent_details::TorrentDetails;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Focus {
@@ -70,22 +70,28 @@ pub struct Main {
 }
 
 impl Main {
-    pub fn new(height: u16) -> Main {
-        rpc::send(CMessage::FilterSubscribe {
-            serial: rpc::next_serial(),
-            kind: ResourceKind::Server,
-            criteria: Vec::new(),
-        });
-        rpc::send(CMessage::FilterSubscribe {
-            serial: rpc::next_serial(),
-            kind: ResourceKind::Tracker,
-            criteria: Vec::new(),
-        });
+    pub fn new(sink: &rpc::WsSink, height: u16) -> Main {
+        rpc::send(
+            sink,
+            CMessage::FilterSubscribe {
+                serial: rpc::next_serial(),
+                kind: ResourceKind::Server,
+                criteria: Vec::new(),
+            },
+        );
+        rpc::send(
+            sink,
+            CMessage::FilterSubscribe {
+                serial: rpc::next_serial(),
+                kind: ResourceKind::Tracker,
+                criteria: Vec::new(),
+            },
+        );
 
         Main {
             last_height: height,
             focus: Focus::Torrents,
-            filter: Filter::new(),
+            filter: Filter::new(sink),
             filter_disp: false,
             torrents: (0, 0, Vec::new()),
             torrent_widths: (0, 0, 0, 0, 0),

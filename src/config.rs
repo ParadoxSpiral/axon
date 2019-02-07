@@ -14,6 +14,7 @@
 // along with Axon.  If not, see <http://www.gnu.org/licenses/>.
 
 use lazy_static::lazy_static;
+use serde::Deserialize;
 use shellexpand;
 use toml;
 

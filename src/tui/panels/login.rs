@@ -13,18 +13,13 @@
 // You should have received a copy of the GNU General Public License
 // along with Axon.  If not, see <http://www.gnu.org/licenses/>.
 
-use synapse_rpc::
-    message::SMessage
-;
+use synapse_rpc::message::SMessage;
 use termion::{cursor, event::Key};
 
-use std::
-    io::Write
-;
+use std::io::Write;
 
 use crate::{
     config::CONFIG,
-    rpc,
     tui::{widgets, Component, HandleInput, HandleRpc, InputResult, Renderable},
     utils::{
         align::{self, x::Align},
@@ -167,7 +162,10 @@ impl HandleInput for Login {
             }
 
             Key::Char('\n') => {
-                rpc::start_connect(self.server.inner(), self.pass.inner()).map(|f| tokio::spawn(f));
+                return InputResult::ConnectWith(
+                    self.server.inner().to_string(),
+                    self.pass.inner().to_string(),
+                );
             }
 
             Key::Char(c) => {

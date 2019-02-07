@@ -20,13 +20,15 @@ pub mod widgets;
 use synapse_rpc::message::SMessage;
 use termion::event::Key;
 
-pub trait Component: Renderable + HandleInput + HandleRpc {}
+pub trait Component: Renderable + HandleInput + HandleRpc + Send + Sync {}
 
 pub trait Renderable: Send {
     fn name(&self) -> String {
         "unnamed".to_owned()
     }
     fn render(&mut self, target: &mut Vec<u8>, width: u16, height: u16, x_off: u16, y_off: u16);
+    // TOOD: Make render take &self to resolve unsafety in MainPanel rendering wrt details,
+    // and add layout fn that's called when size changes detected via SIGWINCH
 }
 
 pub trait HandleInput: Send {
@@ -39,6 +41,7 @@ pub trait HandleRpc: Send {
 
 pub enum InputResult {
     Close,
+    ConnectWith(String, String),
     Rerender,
     ReplaceWith(Box<Component>),
     // A key was not used by any component below the current one

@@ -21,17 +21,8 @@ use tokio::{codec, io, prelude::*};
 
 use std::io::Error;
 
-use crate::{tui::view::Notify, utils::color::ColorEscape};
-
-pub fn start() -> impl Future<Item = (), Error = ()> {
-    codec::FramedRead::new(io::stdin(), InputCodec)
-        .map_err(|e| {
-            Notify::overlay("Input".to_owned(), e.to_string(), Some(ColorEscape::red()));
-        })
-        .for_each(|key| {
-            Notify::input(key);
-            Ok(())
-        })
+pub fn stream() -> impl Stream<Item = Key, Error = (String, String)> {
+    codec::FramedRead::new(io::stdin(), InputCodec).map_err(|e| ("Input".to_owned(), e.to_string()))
 }
 
 struct InputCodec;

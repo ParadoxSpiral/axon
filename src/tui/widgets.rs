@@ -242,10 +242,9 @@ where
         // Draw header
         let n_tabs = self.tabs.len();
         let sec_len = width / n_tabs as u16;
-        let div_budget = "─"
-            .repeat(width.saturating_sub(self.tabs.iter().fold(0, |acc, t| {
-                acc + utils::count_without_styling(&t.borrow().name())
-            })) as usize);
+        let div_budget = "─".repeat(width.saturating_sub(self.tabs.iter().fold(0, |acc, t| {
+            acc + utils::count_without_styling(&t.borrow().name())
+        })) as usize);
         let mut div_budget = div_budget.chars();
         let div_budget = div_budget.by_ref();
         for (i, t) in self.tabs.iter_mut().enumerate() {
@@ -920,7 +919,7 @@ where
 
 pub struct CloseOnInput<'t, T>
 where
-    T: Renderable + HandleRpc,
+    T: Renderable + HandleRpc + Send + Sync,
 {
     content: T,
     trigger: &'t [Key],
@@ -928,18 +927,18 @@ where
 
 impl<'t, T> CloseOnInput<'t, T>
 where
-    T: Renderable + HandleRpc,
+    T: Renderable + HandleRpc + Send + Sync,
 {
     pub fn new(content: T, trigger: &'t [Key]) -> CloseOnInput<'t, T> {
         CloseOnInput { content, trigger }
     }
 }
 
-impl<'t, T> Component for CloseOnInput<'t, T> where T: Renderable + HandleRpc {}
+impl<'t, T> Component for CloseOnInput<'t, T> where T: Renderable + HandleRpc + Send + Sync {}
 
 impl<'t, T> Renderable for CloseOnInput<'t, T>
 where
-    T: Renderable + HandleRpc,
+    T: Renderable + HandleRpc + Send + Sync,
 {
     fn render(&mut self, target: &mut Vec<u8>, width: u16, height: u16, x_off: u16, y_off: u16) {
         self.content.render(target, width, height, x_off, y_off);
@@ -948,7 +947,7 @@ where
 
 impl<'t, T> HandleInput for CloseOnInput<'t, T>
 where
-    T: Renderable + HandleRpc,
+    T: Renderable + HandleRpc + Send + Sync,
 {
     fn input(&mut self, k: Key, _: u16, _: u16) -> InputResult {
         if self.trigger.is_empty() || self.trigger.contains(&k) {
@@ -961,7 +960,7 @@ where
 
 impl<'t, T> HandleRpc for CloseOnInput<'t, T>
 where
-    T: Renderable + HandleRpc,
+    T: Renderable + HandleRpc + Send + Sync,
 {
     fn rpc(&mut self, msg: SMessage) -> bool {
         self.content.rpc(msg)

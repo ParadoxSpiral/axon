@@ -15,8 +15,6 @@
 // You should have received a copy of the GNU General Public License
 // along with Axon.  If not, see <http://www.gnu.org/licenses/>.
 
-#[macro_use]
-extern crate serde_derive;
 extern crate tokio_tungstenite as ws;
 
 #[cfg(feature = "dbg")]
@@ -33,7 +31,7 @@ mod rpc;
 mod tui;
 mod utils;
 
-use tokio::{prelude::*, runtime::Runtime};
+use futures::sync::mpsc;
 #[cfg(feature = "dbg")]
 use lazy_static::lazy_static;
 
@@ -64,28 +62,19 @@ lazy_static! {
 }
 
 fn main() {
-    let mut rt = Runtime::new().unwrap();
-
-    rt.spawn(view::start());
-    rt.spawn(input::start());
+    let (mut urls_s, urls_r) = mpsc::channel(1);;
+    let conns = rpc::connections(urls_r);
 
     if CONFIG.autoconnect {
         #[cfg(feature = "dbg")]
         info!(*S_VIEW, "Autoconnecting");
-        if let Some(rpc) = rpc::start_connect(
-            &*CONFIG.server.clone().unwrap(),
-            CONFIG
-                .pass
-                .clone()
-                .as_ref()
-                .map(|p| &**p)
-                .unwrap_or_else(|| ""),
-        ) {
-            rt.spawn(rpc);
-        }
+        urls_s
+            .try_send((
+                CONFIG.server.clone().unwrap(),
+                CONFIG.pass.clone().unwrap_or_default(),
+            ))
+            .unwrap();
     }
 
-    // Actual shutdown happens via process::exit to avoid having to pass a bunch of shutdown
-    // messages around, this just keeps the process running until exited in the view::start future
-    rt.shutdown_on_idle().wait().unwrap();
+    tokio::run(view::run(urls_s, conns));
 }

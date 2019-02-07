@@ -27,6 +27,8 @@ use crate::{
     tui::{widgets, HandleInput, InputResult},
 };
 
+use std::sync::Arc;
+
 #[derive(Clone)]
 enum FilterMode {
     Insensitive,
@@ -51,31 +53,39 @@ pub struct Filter {
     mode: FilterMode,
     input: widgets::Input,
     serial: u64,
+    sink: rpc::WsSink,
 }
 
 impl Filter {
-    pub fn new() -> Filter {
+    pub fn new(sink: &rpc::WsSink) -> Filter {
         let serial = rpc::next_serial();
-        rpc::send(CMessage::FilterSubscribe {
-            serial,
-            kind: ResourceKind::Torrent,
-            criteria: Vec::new(),
-        });
+        rpc::send(
+            sink,
+            CMessage::FilterSubscribe {
+                serial,
+                kind: ResourceKind::Torrent,
+                criteria: Vec::new(),
+            },
+        );
 
         Filter {
             mode: FilterMode::Insensitive,
             input: widgets::Input::from("".into(), 1),
             serial,
+            sink: Arc::clone(sink),
         }
     }
 
     pub fn reset(&mut self) {
         self.input.clear();
-        rpc::send(CMessage::FilterSubscribe {
-            serial: self.serial,
-            kind: ResourceKind::Torrent,
-            criteria: Vec::new(),
-        });
+        rpc::send(
+            &self.sink,
+            CMessage::FilterSubscribe {
+                serial: self.serial,
+                kind: ResourceKind::Torrent,
+                criteria: Vec::new(),
+            },
+        );
     }
 
     fn update(&self) {
@@ -181,11 +191,14 @@ impl Filter {
             });
         }
 
-        rpc::send(CMessage::FilterSubscribe {
-            serial: self.serial,
-            kind: ResourceKind::Torrent,
-            criteria,
-        });
+        rpc::send(
+            &self.sink,
+            CMessage::FilterSubscribe {
+                serial: self.serial,
+                kind: ResourceKind::Torrent,
+                criteria,
+            },
+        );
     }
 
     pub fn format(&self, active: bool) -> String {

@@ -13,9 +13,7 @@
 // You should have received a copy of the GNU General Public License
 // along with Axon.  If not, see <http://www.gnu.org/licenses/>.
 
-use synapse_rpc::
-    resource::Torrent
-;
+use synapse_rpc::resource::Torrent;
 
 use crate::{
     tui::{widgets, Renderable},
