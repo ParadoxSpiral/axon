@@ -47,5 +47,7 @@ Limits:
 Termion currently does not support windows, but might in the future ([#103](https://github.com/ticki/termion/issues/103)).
 
 # Debugging
-Axon uses env-logger, so e.g. the environment variable `RUST_LOG=trace` will print all logs, including tokio event loop.
+**Note that the log will contain sensitive information, such as the server address, and potentially password (if typed in)!**
+
+Axon uses env-logger, the environment variable `RUST_LOG` controls logging behaviour, e.g. `RUST_LOG=trace` will print all logs.
 To make the logs actually usable, they need to be written to a file since axon is a TUI: `RUST_LOG=trace axon 2>log`.

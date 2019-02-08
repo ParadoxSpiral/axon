@@ -16,6 +16,7 @@
 // along with Axon.  If not, see <http://www.gnu.org/licenses/>.
 
 use bytes::BytesMut;
+use log::debug;
 use termion::event::{self, Event, Key};
 use tokio::{codec, io, prelude::*};
 
@@ -46,8 +47,17 @@ impl codec::Decoder for InputCodec {
     type Error = Error;
 
     fn decode(&mut self, src: &mut BytesMut) -> Result<Option<Key>, Error> {
-        if src.len() == 0 {
+        if src.is_empty() {
             return Ok(None);
+        }
+
+        // A \x1B is either Key::Esc or starts an escape sequence, parse_event does not
+        // parse Key::Esc because termion's design is a bit weird
+        if src[0] == b'\x1B' && src.len() == 1
+            || src.len() >= 2 && src[0] == b'\x1B' && src[1] == b'\x1B'
+        {
+            src.advance(1);
+            return Ok(Some(Key::Esc));
         }
 
         // Since parse_event does not return how many bytes were read, we count that ourself
@@ -62,6 +72,10 @@ impl codec::Decoder for InputCodec {
                 Event::Key(k) => Ok(Some(k)),
             }
         } else {
+            // This is either an invalid/unsupported escape, or not enough bytes were available at
+            // the time this method was called, which seems nigh impossible since bytes written
+            // to stdin in one flush will be given to us in one go
+            src.clear();
             Ok(None)
         }
     }
