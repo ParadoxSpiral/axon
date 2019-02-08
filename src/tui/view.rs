@@ -14,6 +14,7 @@
 // along with Axon.  If not, see <http://www.gnu.org/licenses/>.
 
 use futures::sync::mpsc;
+use log::{debug, trace, warn};
 use parking_lot::Mutex;
 use termion::{self, clear, cursor, event::Key, raw::IntoRawMode, screen::AlternateScreen};
 use tokio::{prelude::*, timer};
@@ -100,8 +101,7 @@ pub fn run(
                     Key::Ctrl('q') => {
                         let mut logged_in = logged_in1.lock();
                         if *logged_in {
-                            #[cfg(feature = "dbg")]
-                            debug!(*crate::S_VIEW, "Disconnecting");
+                            debug!("Disconnecting");
 
                             let mut conn = conn1.lock();
                             let mut content = content1.lock();
@@ -111,9 +111,7 @@ pub fn run(
 
                             Ok(true)
                         } else {
-                            #[cfg(feature = "dbg")]
-                            debug!(*crate::S_VIEW, "Closing");
-
+                            debug!("Quitting");
                             Err(Err::Shutdown)
                         }
                     }
@@ -188,6 +186,8 @@ pub fn run(
         }))
         .or_else(move |e| match e {
             Err::Recoverable((name, text)) => {
+                warn!("Recoverable err in {}: {}", name, text);
+
                 // Because we can't move the component out, we need to use this hack
                 // This is only safe because we leak ct below, so that it won't get freed
                 let mut content = content3.lock();
@@ -218,18 +218,20 @@ pub fn run(
             e => Err(e),
         })
         .for_each(move |render| {
+            let err = |t: io::Error| Err::Unrecoverable(("Render".to_string(), t.to_string()));
             if render {
+                trace!("Rendering");
                 if let Ok((width, height)) = termion::terminal_size() {
                     let mut content = content4.lock();
-                    write!(render_buffer, "{}", clear::All).unwrap();
+                    write!(render_buffer, "{}", clear::All).map_err(err)?;
                     content.render(&mut render_buffer, width, height, 1, 1);
 
-                    out.write_all(&*render_buffer).unwrap();
-                    out.flush().unwrap();
+                    out.write_all(&*render_buffer).map_err(err)?;
+                    out.flush().map_err(err)?;
                     render_buffer.clear();
                 } else {
-                    write!(out, "smol").unwrap();
-                    out.flush().unwrap();
+                    write!(out, "smol").map_err(err)?;
+                    out.flush().map_err(err)?;
                 }
             }
             Ok(())
@@ -238,16 +240,12 @@ pub fn run(
             Err::Shutdown => (),
             Err::Recoverable(_) => unreachable!(),
             Err::Unrecoverable((name, text)) => {
-                #[cfg(feature = "dbg")]
-                debug!(*crate::S_VIEW, "View error shutdown");
-
+                warn!("Unrecoverable error in {}: {}", name, text);
                 println!("Unrecoverable error in {}: {}", name, text);
             }
         })
         .then(|_| {
-            #[cfg(feature = "dbg")]
-            debug!(*crate::S_VIEW, "View finishing");
-
+            debug!("View finishing");
             print!("{}", cursor::Show);
             Ok(())
         })

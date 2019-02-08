@@ -175,7 +175,7 @@ where
         // Draw top
         let top_h = match self.top_size {
             Unit::Lines(h) => h,
-            Unit::Percent(p) => (height as f32 * p).floor() as u16,
+            Unit::Percent(p) => (f32::from(height) * p).floor() as u16,
         };
         self.top
             .borrow_mut()
@@ -381,7 +381,7 @@ where
             )
             .unwrap();
         }
-        for i in 1..(self.top_dimensions.1 + 1) {
+        for i in 1..=self.top_dimensions.1 {
             write!(
                 target,
                 "{}{}│{}{}{}│{}",
@@ -441,7 +441,7 @@ where
             top,
             below: ManuallyDrop::new(below),
             top_dimensions,
-            box_color: box_color,
+            box_color,
             name: name.into(),
         }
     }

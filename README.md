@@ -4,6 +4,13 @@ The synapse TUI client
 # Usage
 Note: Currently termion (the underlying TUI library) does not respect terminfo and uses ANSI color codes ([#106](https://github.com/ticki/termion/issues/106)).
 
+## Compilation dependencies
+Rust minimum version of 1.31, pkg-config, a cc, openssl/security-framework/schannel.
+
+## Configuration
+The config file is searched for at `$XDG_CONFIG_HOME/axon/conf.toml` and `~/.config/axon/conf.toml`.
+For options, see `example_conf.toml`.
+
 ## Keybindings
 - `e` display errors of the currently selected torrent
 - `hjkl` movement, `HJKL` switch focus
@@ -36,13 +43,9 @@ Limits:
 - `<ENTER>` Commit limits and close panel
 - `<ESC>` Forget limits and close panel
 
-## Configuration
-The config file is searched for at `$XDG_CONFIG_HOME/axon/conf.toml` and `~/.config/axon/conf.toml`.
-For options, see `example_conf.toml`.
-
-## Compilation dependencies
-Rust minimum version of 1.31, pkg-config, a cc, openssl/security-framework/schannel.
-
-
 # Windows
 Termion currently does not support windows, but might in the future ([#103](https://github.com/ticki/termion/issues/103)).
+
+# Debugging
+Axon uses env-logger, so e.g. the environment variable `RUST_LOG=trace` will print all logs, including tokio event loop.
+To make the logs actually usable, they need to be written to a file since axon is a TUI: `RUST_LOG=trace axon 2>log`.

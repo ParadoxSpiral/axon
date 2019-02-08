@@ -16,6 +16,7 @@
 // along with Axon.  If not, see <http://www.gnu.org/licenses/>.
 
 use futures::sync::mpsc;
+use log::{debug, trace, warn};
 use parking_lot::Mutex;
 use serde_json;
 use synapse_rpc::{
@@ -49,8 +50,7 @@ pub fn next_serial() -> u64 {
 }
 
 pub fn send(sink: &WsSink, msg: CMessage) {
-    #[cfg(feature = "dbg")]
-    debug!(*crate::S_RPC, "Sending {:#?}", msg);
+    debug!("Sending {:#?}", msg);
     send_raw(
         Arc::clone(sink),
         WsMessage::Text(serde_json::to_string(&msg).unwrap()),
@@ -58,8 +58,6 @@ pub fn send(sink: &WsSink, msg: CMessage) {
 }
 
 fn send_raw(sink: WsSink, msg: WsMessage) {
-    // This is wrapped in an option to avoid cloning the message, since start_send moves it,
-    // and then we couldn't use the var in any succeeding call of the closure
     let mut msg = Some(msg);
     tokio::spawn(future::poll_fn(move || {
         if SERIAL.load(Ordering::Acquire) == 0 {
@@ -93,26 +91,22 @@ pub fn connections(
             url.query_pairs_mut()
                 .append_pair("password", &pass)
                 .finish();
+            trace!("Should connect to {:?}", url.origin());
 
-            #[cfg(feature = "dbg")]
-            trace!(*crate::S_RPC, "RPC should connect to {:?}", url.origin());
-
-            Ok(ws::connect_async(url)
-                .map_err(|err| format!("{:?}", err))
+            Ok(tokio_tungstenite::connect_async(url)
                 .timeout(Duration::from_secs(10))
                 .map_err(|e| {
                     (
                         "RPC".to_string(),
                         if e.is_timer() {
-                            "Timeout while connecting to server (10s)".to_owned()
+                            "Timeout connecting to server (10s)".to_owned()
                         } else {
-                            e.into_inner().unwrap()
+                            format!("{:?}", e.into_inner().unwrap())
                         },
                     )
                 })
                 .map(move |(stream, _)| {
-                    #[cfg(feature = "dbg")]
-                    trace!(*crate::S_RPC, "RPC connected");
+                    trace!("Connected");
 
                     let (sink, stream) = stream.split();
                     let sink = Arc::new(Mutex::new(sink));
@@ -138,11 +132,12 @@ fn handle_connection(
             WsMessage::Text(s) => match serde_json::from_str::<SMessage>(&s) {
                 Err(e) => Err(("RPC".to_owned(), e.description().to_string())),
                 Ok(SMessage::ResourcesExtant { ids, .. }) => {
+                    trace!("ResourcesExtant: {:#?}", ids);
                     send(
                         &sink,
                         CMessage::Subscribe {
                             serial: next_serial(),
-                            ids: ids.iter().map(|id| (&**id).to_owned()).collect(),
+                            ids: ids.iter().map(|id| (&**id).to_string()).collect(),
                         },
                     );
                     // FIXME: This shouldn't be necessary, but without it we miss the reply - why?
@@ -150,7 +145,7 @@ fn handle_connection(
                     Ok(Item::Idle)
                 }
                 Ok(SMessage::ResourcesRemoved { serial, ids }) => {
-                    debug!(*crate::S_RPC, "ResourcesRemoved: {:#?}", ids);
+                    trace!("ResourcesRemoved: {:#?}", ids);
                     send(
                         &sink,
                         CMessage::Unsubscribe {
@@ -165,7 +160,7 @@ fn handle_connection(
                         || (ver.minor != synapse_rpc::MINOR_VERSION
                             && synapse_rpc::MAJOR_VERSION == 0)
                     {
-                        warn!(*crate::S_RPC, "RPC version mismatch");
+                        warn!("RPC version mismatch");
                         Err((
                             "RPC".to_string(),
                             format!(
@@ -181,7 +176,7 @@ fn handle_connection(
                     }
                 }
                 Ok(msg) => {
-                    debug!(*crate::S_RPC, "Received: {:#?}", msg);
+                    trace!("Received: {:#?}", msg);
                     Ok(Item::Msg(msg))
                 }
             },

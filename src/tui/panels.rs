@@ -712,7 +712,6 @@ impl HandleRpc for Main {
             SMessage::ResourcesRemoved { ids, .. } => {
                 // Remove matching resources, and move selection up/left if a resource up/left was
                 // removed
-
                 let mut i = 0;
                 let mut dec = 0;
                 let mut recomp_bounds = false;
@@ -938,6 +937,7 @@ impl HandleRpc for Main {
                         _ => (),
                     }
                 }
+
                 if recomp_bounds {
                     let h = self.last_height;
                     self.recompute_torrent_bounds(h);
