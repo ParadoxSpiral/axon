@@ -15,6 +15,13 @@
 // You should have received a copy of the GNU General Public License
 // along with Axon.  If not, see <http://www.gnu.org/licenses/>.
 
+#[cfg(not(unix))]
+compile_error!(
+    "Currently only unix-like targets are supported because we use SIGWINCH to detect \
+     if the terminal window was resized. The TUI library itself also does not yet \
+     support windows.\nPlease use receptor, the synapse web interface instead."
+);
+
 mod config;
 mod input;
 mod rpc;

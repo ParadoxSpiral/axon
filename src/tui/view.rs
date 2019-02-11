@@ -18,6 +18,7 @@ use log::{debug, trace, warn};
 use parking_lot::Mutex;
 use termion::{self, clear, cursor, event::Key, raw::IntoRawMode, screen::AlternateScreen};
 use tokio::{prelude::*, timer};
+use tokio_signal::unix::Signal;
 
 use std::{
     cmp,
@@ -81,8 +82,9 @@ pub fn run(
 
     // This futurefied stream first selects on:
     // 1) a 10s interval, to regularly update the server uptime
-    // 2) stdin input
-    // 3) rpc activity
+    // 2) SIGWINCH, to handle resizing
+    // 3) stdin input
+    // 4) rpc activity
     // If no error occured, the selected value is a bool that if true causes a rendering pass
     // handled via a for_each.
     // In case of an error it is checked what kind of error: Shutdown. Recoverable, or Unrecoverable.
@@ -95,8 +97,15 @@ pub fn run(
         .map_err(|e| Err::Unrecoverable(("Timer".to_string(), e.to_string())))
         .map(|_| true)
         .select(
+            // TODO: Do layouting here
+            Signal::new(libc::SIGWINCH)
+                .flatten_stream()
+                .map_err(|e| Err::Unrecoverable(("Signal".to_string(), e.to_string())))
+                .map(|_| true),
+        )
+        .select(
             input::stream()
-                .map_err(|e| Err::Unrecoverable(e))
+                .map_err(Err::Unrecoverable)
                 .and_then(move |key| match key {
                     Key::Ctrl('q') => {
                         let mut logged_in = logged_in1.lock();
@@ -176,7 +185,7 @@ pub fn run(
                         *conn = Connection::Idle;
 
                         std::result::Result::Err(Err::Recoverable(e))
-                    },
+                    }
                     Ok(Async::Ready(Some(RpcItem::Msg(msg)))) => {
                         Ok(Async::Ready(Some(content2.lock().rpc(msg))))
                     }
