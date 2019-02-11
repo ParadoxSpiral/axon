@@ -65,6 +65,7 @@ fn send_raw(sink: WsSink, msg: WsMessage) {
         } else if let Some(msg2) = msg.take() {
             let mut sink = sink.lock();
             if let AsyncSink::NotReady(msg2) = sink.start_send(msg2).unwrap() {
+                trace!("Wanted to send message, but sink did not accept");
                 msg = Some(msg2);
                 Ok(Async::NotReady)
             } else {

@@ -71,6 +71,7 @@ pub fn run(
     let mut out = AlternateScreen::from(io::stdout()).into_raw_mode().unwrap();
     write!(out, "{}", cursor::Hide).unwrap();
 
+    // Wrap the things that are sent into Futures and shared in Arcs/Mutexes
     let conn1 = Arc::new(Mutex::new(Connection::Idle));
     let conn2 = Arc::clone(&conn1);
     let logged_in1 = Arc::new(Mutex::new(false));
@@ -80,11 +81,112 @@ pub fn run(
     let content3 = Arc::clone(&content1);
     let content4 = Arc::clone(&content1);
 
+    let interval = timer::Interval::new(Instant::now(), Duration::from_secs(10))
+        .map_err(|e| Err::Unrecoverable(("Timer".to_string(), e.to_string())))
+        .map(|_| true);
+
+    // SIGWINCH is signalled if the terminal got resized
+    // TODO: Do layouting here
+    let resize = Signal::new(libc::SIGWINCH)
+        .flatten_stream()
+        .map_err(|e| Err::Unrecoverable(("Signal".to_string(), e.to_string())))
+        .map(|_| true);
+
+    let input = input::stream()
+        .map_err(Err::Unrecoverable)
+        .and_then(move |key| match key {
+            Key::Ctrl('q') => {
+                let mut logged_in = logged_in1.lock();
+                if *logged_in {
+                    debug!("Disconnecting");
+
+                    let mut conn = conn1.lock();
+                    let mut content = content1.lock();
+                    *conn = Connection::Idle;
+                    *content = Box::new(panels::Login::new());
+                    *logged_in = false;
+
+                    Ok(true)
+                } else {
+                    debug!("Quitting");
+                    Err(Err::Shutdown)
+                }
+            }
+            key => {
+                let (w, h) = termion::terminal_size().unwrap_or((0, 0));
+                let mut content = content1.lock();
+                match content.input(key, w, h) {
+                    InputResult::ReplaceWith(other) => {
+                        mem::replace(&mut *content, other);
+                        Ok(true)
+                    }
+                    InputResult::ConnectWith(svr, pass) => {
+                        urls.try_send((svr, pass)).unwrap();
+                        Ok(false)
+                    }
+                    InputResult::Rerender => Ok(true),
+                    _ => Ok(false),
+                }
+            }
+        });
+
+    let rpc = stream::poll_fn(move || {
+        let mut conn = conn2.lock();
+        match *conn {
+            // Here we assume that a new connection will only be made while idle,
+            // i.e. on the login screen
+            Connection::Idle => match conns.poll() {
+                Err(e) => std::result::Result::Err(Err::Recoverable(e)),
+                Ok(Async::Ready(Some(fut))) => {
+                    *conn = Connection::Pending(fut);
+                    task::current().notify();
+
+                    Ok(Async::NotReady)
+                }
+                _ => Ok(Async::NotReady),
+            },
+            Connection::Pending(ref mut c) => match c.poll() {
+                Err(e) => {
+                    *conn = Connection::Idle;
+                    std::result::Result::Err(Err::Recoverable(e))
+                }
+                Ok(Async::Ready((sink, stream))) => {
+                    *conn = Connection::Established(stream);
+
+                    let mut content = content2.lock();
+                    let height = termion::terminal_size().unwrap_or((0, 0)).1;
+                    *content = Box::new(panels::Main::new(&sink, height));
+
+                    let mut logged_in = logged_in2.lock();
+                    *logged_in = true;
+
+                    Ok(Async::Ready(Some(true)))
+                }
+                _ => Ok(Async::NotReady),
+            },
+            Connection::Established(ref mut c) => match c.poll() {
+                Err(e) => {
+                    let mut content = content2.lock();
+                    let mut logged_in = logged_in2.lock();
+                    *content = Box::new(panels::Login::new());
+                    *logged_in = false;
+                    *conn = Connection::Idle;
+
+                    std::result::Result::Err(Err::Recoverable(e))
+                }
+                Ok(Async::Ready(Some(RpcItem::Msg(msg)))) => {
+                    Ok(Async::Ready(Some(content2.lock().rpc(msg))))
+                }
+                _ => Ok(Async::NotReady),
+            },
+        }
+    });
+
     // This futurefied stream first selects on:
-    // 1) a 10s interval, to regularly update the server uptime
-    // 2) SIGWINCH, to handle resizing
-    // 3) stdin input
-    // 4) rpc activity
+    // 1) stdin input
+    // 2) rpc activity
+    // 3) SIGWINCH, to handle resizing
+    // 4) a 10s interval, to regularly update the server uptime
     // If no error occured, the selected value is a bool that if true causes a rendering pass
     // handled via a for_each.
     // In case of an error it is checked what kind of error: Shutdown. Recoverable, or Unrecoverable.
@@ -93,106 +195,8 @@ pub fn run(
     // stops it and thus stops the whole Future/application.
     // Before the application stops, all internally spawned tasks are waited upon, so any remaining
     // rpc msg send operations are completed.
-    timer::Interval::new(Instant::now(), Duration::from_secs(10))
-        .map_err(|e| Err::Unrecoverable(("Timer".to_string(), e.to_string())))
-        .map(|_| true)
-        .select(
-            // TODO: Do layouting here
-            Signal::new(libc::SIGWINCH)
-                .flatten_stream()
-                .map_err(|e| Err::Unrecoverable(("Signal".to_string(), e.to_string())))
-                .map(|_| true),
-        )
-        .select(
-            input::stream()
-                .map_err(Err::Unrecoverable)
-                .and_then(move |key| match key {
-                    Key::Ctrl('q') => {
-                        let mut logged_in = logged_in1.lock();
-                        if *logged_in {
-                            debug!("Disconnecting");
-
-                            let mut conn = conn1.lock();
-                            let mut content = content1.lock();
-                            *conn = Connection::Idle;
-                            *content = Box::new(panels::Login::new());
-                            *logged_in = false;
-
-                            Ok(true)
-                        } else {
-                            debug!("Quitting");
-                            Err(Err::Shutdown)
-                        }
-                    }
-                    key => {
-                        let (w, h) = termion::terminal_size().unwrap_or((0, 0));
-                        let mut content = content1.lock();
-                        match content.input(key, w, h) {
-                            InputResult::ReplaceWith(other) => {
-                                mem::replace(&mut *content, other);
-                                Ok(true)
-                            }
-                            InputResult::ConnectWith(svr, pass) => {
-                                urls.try_send((svr, pass)).unwrap();
-                                Ok(false)
-                            }
-                            InputResult::Rerender => Ok(true),
-                            _ => Ok(false),
-                        }
-                    }
-                }),
-        )
-        .select(stream::poll_fn(move || {
-            let mut conn = conn2.lock();
-            match *conn {
-                // Here we assume that a new connection will only be made while idle,
-                // i.e. on the login screen
-                Connection::Idle => match conns.poll() {
-                    Err(e) => std::result::Result::Err(Err::Recoverable(e)),
-                    Ok(Async::Ready(Some(fut))) => {
-                        *conn = Connection::Pending(fut);
-                        task::current().notify();
-
-                        Ok(Async::NotReady)
-                    }
-                    _ => Ok(Async::NotReady),
-                },
-                Connection::Pending(ref mut c) => match c.poll() {
-                    Err(e) => {
-                        *conn = Connection::Idle;
-                        std::result::Result::Err(Err::Recoverable(e))
-                    }
-                    Ok(Async::Ready((sink, stream))) => {
-                        *conn = Connection::Established(stream);
-
-                        let mut content = content2.lock();
-                        let height = termion::terminal_size().unwrap_or((0, 0)).1;
-                        *content = Box::new(panels::Main::new(&sink, height));
-
-                        let mut logged_in = logged_in2.lock();
-                        *logged_in = true;
-
-                        Ok(Async::Ready(Some(true)))
-                    }
-                    _ => Ok(Async::NotReady),
-                },
-                Connection::Established(ref mut c) => match c.poll() {
-                    Err(e) => {
-                        let mut content = content2.lock();
-                        let mut logged_in = logged_in2.lock();
-                        *content = Box::new(panels::Login::new());
-                        *logged_in = false;
-                        *conn = Connection::Idle;
-
-                        std::result::Result::Err(Err::Recoverable(e))
-                    }
-                    Ok(Async::Ready(Some(RpcItem::Msg(msg)))) => {
-                        Ok(Async::Ready(Some(content2.lock().rpc(msg))))
-                    }
-                    _ => Ok(Async::NotReady),
-                },
-            }
-        }))
+    input
+        .select(rpc.select(resize.select(interval)))
         .or_else(move |e| match e {
             Err::Recoverable((name, text)) => {
                 warn!("Recoverable err in {}: {}", name, text);
