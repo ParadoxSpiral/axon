@@ -21,8 +21,23 @@ use tokio::{codec, io, prelude::*};
 
 use std::io::Error;
 
+// FIXME: Due to `https://github.com/tokio-rs/tokio/issues/589` we currently need to handle stdin
+// in its own thread
 pub fn stream() -> impl Stream<Item = Key, Error = (String, String)> {
-    codec::FramedRead::new(io::stdin(), InputCodec).map_err(|e| ("Input".to_owned(), e.to_string()))
+    //codec::FramedRead::new(io::stdin(), InputCodec)
+    //    .inspect(|key| debug!("Decoded: {:?}", key))
+    //    .map_err(|e| ("Input".to_owned(), e.to_string()))
+
+    let (mut s, r) = futures::sync::mpsc::channel(5);
+    std::thread::spawn(move || {
+        use termion::input::TermRead;
+        for k in std::io::stdin().keys() {
+            debug!("Decoded: {:?}", k);
+            s.try_send(k.unwrap()).unwrap();
+        }
+    });
+
+    r.map_err(|_| unreachable!())
 }
 
 struct InputCodec;
