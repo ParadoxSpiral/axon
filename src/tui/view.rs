@@ -139,8 +139,6 @@ pub fn run(
                 Err(e) => std::result::Result::Err(Err::Recoverable(e)),
                 Ok(Async::Ready(Some(fut))) => {
                     *conn = Connection::Pending(fut);
-                    task::current().notify();
-
                     Ok(Async::NotReady)
                 }
                 _ => Ok(Async::NotReady),
