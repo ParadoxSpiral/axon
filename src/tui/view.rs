@@ -23,7 +23,6 @@ use tokio_signal::unix::Signal;
 use std::{
     cmp,
     io::{self, Write},
-    mem,
     sync::Arc,
     time::{Duration, Instant},
 };
@@ -76,7 +75,9 @@ pub fn run(
     let conn2 = Arc::clone(&conn1);
     let logged_in1 = Arc::new(Mutex::new(false));
     let logged_in2 = Arc::clone(&logged_in1);
-    let content1 = Arc::new(Mutex::new(Box::new(panels::Login::new()) as Box<Component>));
+    let content1 = Arc::new(Mutex::new(Some(
+        Box::new(panels::Login::new()) as Box<Component>
+    )));
     let content2 = Arc::clone(&content1);
     let content3 = Arc::clone(&content1);
     let content4 = Arc::clone(&content1);
@@ -103,7 +104,7 @@ pub fn run(
                     let mut conn = conn1.lock();
                     let mut content = content1.lock();
                     *conn = Connection::Idle;
-                    *content = Box::new(panels::Login::new());
+                    *content = Some(Box::new(panels::Login::new()));
                     *logged_in = false;
 
                     Ok(true)
@@ -115,9 +116,13 @@ pub fn run(
             key => {
                 let (w, h) = termion::terminal_size().unwrap_or((0, 0));
                 let mut content = content1.lock();
-                match content.input(key, w, h) {
+                match content
+                    .as_mut()
+                    .unwrap_or_else(|| unreachable!())
+                    .input(key, w, h)
+                {
                     InputResult::ReplaceWith(other) => {
-                        mem::replace(&mut *content, other);
+                        *content = Some(other);
                         Ok(true)
                     }
                     InputResult::ConnectWith(svr, pass) => {
@@ -153,7 +158,7 @@ pub fn run(
 
                     let mut content = content2.lock();
                     let height = termion::terminal_size().unwrap_or((0, 0)).1;
-                    *content = Box::new(panels::Main::new(&sink, height));
+                    *content = Some(Box::new(panels::Main::new(&sink, height)));
 
                     let mut logged_in = logged_in2.lock();
                     *logged_in = true;
@@ -166,14 +171,16 @@ pub fn run(
                 Err(e) => {
                     let mut content = content2.lock();
                     let mut logged_in = logged_in2.lock();
-                    *content = Box::new(panels::Login::new());
+                    *content = Some(Box::new(panels::Login::new()));
                     *logged_in = false;
                     *conn = Connection::Idle;
 
                     std::result::Result::Err(Err::Recoverable(e))
                 }
                 Ok(Async::Ready(Some(RpcItem::Msg(msg)))) => {
-                    Ok(Async::Ready(Some(content2.lock().rpc(msg))))
+                    let mut content = content2.lock();
+                    let content = content.as_mut().unwrap_or_else(|| unreachable!());
+                    Ok(Async::Ready(Some(content.rpc(msg))))
                 }
                 _ => Ok(Async::NotReady),
             },
@@ -199,11 +206,7 @@ pub fn run(
             Err::Recoverable((name, text)) => {
                 warn!("Recoverable err in {}: {}", name, text);
 
-                // Because we can't move the component out, we need to use this hack
-                // This is only safe because we leak ct below, so that it won't get freed
                 let mut content = content3.lock();
-                let alias_cur = unsafe { Box::from_raw((&mut **content) as *mut Component) };
-
                 let len = cmp::max(text.len(), name.len()) + 2;
                 let overlay = Box::new(widgets::OwnedOverlay::new(
                     widgets::CloseOnInput::new(
@@ -218,12 +221,13 @@ pub fn run(
                             Key::Char('\n'),
                         ],
                     ),
-                    alias_cur,
+                    content.take().unwrap_or_else(|| unreachable!()),
                     (len as _, 1),
                     Some(ColorEscape::red()),
                     Some(name),
                 ));
-                mem::forget(mem::replace(&mut *content, overlay));
+                *content = Some(overlay);
+
                 Ok(true)
             }
             e => Err(e),
@@ -234,6 +238,7 @@ pub fn run(
                 trace!("Rendering");
                 if let Ok((width, height)) = termion::terminal_size() {
                     let mut content = content4.lock();
+                    let content = content.as_mut().unwrap_or_else(|| unreachable!());
                     write!(render_buffer, "{}", clear::All).map_err(err)?;
                     content.render(&mut render_buffer, width, height, 1, 1);
 
