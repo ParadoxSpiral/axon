@@ -17,37 +17,35 @@ use termion::color;
 
 use std::fmt;
 
-// TODO: This should be &'static str, but termion's design currently doesn't allow that-
-// With more const fn stuff, this could possibly be done with &*format!(...)
-/// This codes termion's Color so as to avoid passing around Box<dyn Color>
-pub struct ColorEscape(String);
+/// This codes (erases) termion's Color so as to avoid passing around Box<dyn Color>
+pub struct ColorEscape(&'static str);
 
 impl ColorEscape {
     pub fn empty() -> ColorEscape {
-        ColorEscape(String::new())
+        ColorEscape("")
     }
-    pub fn inner(&self) -> &String {
-        &self.0
+    pub fn inner(&self) -> &'static str {
+        self.0
     }
 
     pub fn reset() -> ColorEscape {
-        ColorEscape(format!("{}", color::Fg(color::Reset)))
+        ColorEscape(color::Reset.fg_str())
     }
     pub fn black() -> ColorEscape {
-        ColorEscape(format!("{}", color::Fg(color::Black)))
+        ColorEscape(color::Black.fg_str())
     }
     pub fn red() -> ColorEscape {
-        ColorEscape(format!("{}", color::Fg(color::Red)))
+        ColorEscape(color::Red.fg_str())
     }
     pub fn cyan() -> ColorEscape {
-        ColorEscape(format!("{}", color::Fg(color::Cyan)))
+        ColorEscape(color::Cyan.fg_str())
     }
 
     pub fn reset_bg() -> ColorEscape {
-        ColorEscape(format!("{}", color::Bg(color::Reset)))
+        ColorEscape(color::Reset.bg_str())
     }
     pub fn red_bg() -> ColorEscape {
-        ColorEscape(format!("{}", color::Bg(color::Red)))
+        ColorEscape(color::Red.bg_str())
     }
 }
 
