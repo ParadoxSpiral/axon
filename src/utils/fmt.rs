@@ -46,6 +46,7 @@ pub fn date_diff_now(date: DateTime<Utc>) -> String {
 
 pub trait FormatSize {
     fn fmt_size(self) -> String;
+    fn fmt_size_align(self) -> String;
 }
 
 static SCALE: [&'static str; 9] = ["B", "KiB", "MiB", "GiB", "TiB", "PiB", "EiB", "ZiB", "YiB"];
@@ -53,6 +54,23 @@ macro_rules! impl_fmt_size {
     ($impl_ty:ty) => {
         impl FormatSize for $impl_ty {
             fn fmt_size(self) -> String {
+                let mut size = self as f32;
+                let mut idx = 0;
+                while size >= 1024. {
+                    size /= 1024.;
+                    idx += 1;
+                }
+
+                // Cheat to avoid overly long alignments
+                if size >= 1000. {
+                    size = 1024. / size;
+                    idx += 1;
+                }
+
+                format!("{:.2} {}", size, SCALE[idx])
+            }
+
+            fn fmt_size_align(self) -> String {
                 let mut size = self as f32;
                 let mut idx = 0;
                 while size >= 1024. {

@@ -53,7 +53,7 @@ impl Renderable for TorrentDetails {
             widgets::Text::<_, align::x::Left, align::y::Top>::new(
                 true,
                 format!(
-                    "{}, {}    Picker: {:?}    Created: {} ago    Modified: {} ago",
+                    "{}, {}   Picker: {:?}   Created: {} ago   Modified: {} ago",
                     if self.torr.private {
                         "Private"
                     } else {
@@ -72,24 +72,24 @@ impl Renderable for TorrentDetails {
             widgets::Text::<_, align::x::Left, align::y::Top>::new(
                 true,
                 format!(
-                    "Rates: {}[{}]↑ {}[{}]↓    Lifetime: {:.2} {}↑ {}↓",
+                    "Rates: {}[{}]↑ {}[{}]↓   Lifetime: {}↑ {}↓ → {:.2}",
                     self.torr.rate_up.fmt_size(),
                     self.torr
                         .throttle_up
                         .map(|t| if t == -1 { "∞".into() } else { t.fmt_size() })
                         .unwrap_or_else(|| "*".into()),
-                    self.torr.rate_down.fmt_size(),
+                    self.torr.rate_down.fmt_size_align(),
                     self.torr
                         .throttle_down
                         .map(|t| if t == -1 { "∞".into() } else { t.fmt_size() })
                         .unwrap_or_else(|| "*".into()),
+                    self.torr.transferred_up.fmt_size(),
+                    self.torr.transferred_down.fmt_size(),
                     if self.torr.transferred_down == 0 {
                         1.
                     } else {
                         self.torr.transferred_up as f32 / self.torr.transferred_down as f32
                     },
-                    self.torr.transferred_up.fmt_size(),
-                    self.torr.transferred_down.fmt_size(),
                 ),
             )
             .render(target, width, 1, x_off, y_off + 1);
@@ -99,7 +99,7 @@ impl Renderable for TorrentDetails {
             widgets::Text::<_, align::x::Left, align::y::Top>::new(
                 true,
                 format!(
-                    "Size: {}    Progress: {}%    Availability: {}%    Priority: {}",
+                    "Size: {}   Progress: {}%   Availability: {}%   Priority: {}",
                     self.torr
                         .size
                         .map(|p| p.fmt_size())
@@ -116,7 +116,7 @@ impl Renderable for TorrentDetails {
             widgets::Text::<_, align::x::Left, align::y::Top>::new(
                 true,
                 format!(
-                    "Files: {}    Pieces: {}    P-size: {}    Peers: {}    Trackers: {}",
+                    "Files: {}   Pieces: {}   P-size: {}   Peers: {}   Trackers: {}",
                     self.torr
                         .files
                         .map(|f| format!("{}", f))

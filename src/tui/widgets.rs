@@ -35,7 +35,7 @@ use crate::{
     },
 };
 
-// TODO: Splitup in render and util widgets
+// TODO: Splitup in windowing, content, and util widgets
 
 pub enum Unit {
     Lines(u16),

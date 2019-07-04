@@ -484,32 +484,40 @@ impl Renderable for Main {
                     widgets::Text::<_, align::x::Right, align::y::Top>::new(
                         true,
                         format!(
-                        "{}{: >3}% {: ^w_status$} {: >10}[{: ^w_tu$}]↑ {: >10}[{: ^w_td$}]↓   \
-                         {: >w_rat$.2}  {: >10}↑  {: >10}↓{}",
-                        c_s,
-                        (t.progress * 100.).round(),
-                        t.status.as_str(),
-                        t.rate_up.fmt_size(),
-                        t.throttle_up
-                            .map(|t| if t == -1 { "∞".into() } else { t.fmt_size() })
-                            .unwrap_or_else(|| "*".into()),
-                        t.rate_down.fmt_size(),
-                        t.throttle_down
-                            .map(|t| if t == -1 { "∞".into() } else { t.fmt_size() })
-                            .unwrap_or_else(|| "*".into()),
-                        if t.transferred_down == 0 {
-                            0.
-                        } else {
-                            t.transferred_up as f32 / t.transferred_down as f32
-                        },
-                        t.transferred_up.fmt_size(),
-                        t.transferred_down.fmt_size(),
-                        c_e,
-                        w_status = self.torrent_widths.0,
-                        w_tu = self.torrent_widths.1,
-                        w_td = self.torrent_widths.2,
-                        w_rat = self.torrent_widths.3,
-                    ),
+                            "{}{: >3}% {: ^w_status$} {}[{: ^w_tu$}]↑ {}[{: ^w_td$}]↓   \
+                             {: >w_rat$.2}  {}↑  {}↓{}",
+                            c_s,
+                            (t.progress * 100.).round(),
+                            t.status.as_str(),
+                            t.rate_up.fmt_size_align(),
+                            t.throttle_up
+                                .map(|t| if t == -1 {
+                                    "∞".into()
+                                } else {
+                                    t.fmt_size_align()
+                                })
+                                .unwrap_or_else(|| "*".into()),
+                            t.rate_down.fmt_size(),
+                            t.throttle_down
+                                .map(|t| if t == -1 {
+                                    "∞".into()
+                                } else {
+                                    t.fmt_size_align()
+                                })
+                                .unwrap_or_else(|| "*".into()),
+                            if t.transferred_down == 0 {
+                                0.
+                            } else {
+                                t.transferred_up as f32 / t.transferred_down as f32
+                            },
+                            t.transferred_up.fmt_size_align(),
+                            t.transferred_down.fmt_size_align(),
+                            c_e,
+                            w_status = self.torrent_widths.0,
+                            w_tu = self.torrent_widths.1,
+                            w_td = self.torrent_widths.2,
+                            w_rat = self.torrent_widths.3,
+                        ),
                     )
                     .render(
                         target,
@@ -598,11 +606,11 @@ impl Renderable for Main {
             widgets::Text::<_, align::x::Left, align::y::Top>::new(
                 true,
                 format!(
-                    "Server {}: {}, {}    {}[{}]↑ {}[{}]↓   \
-                     Session: {:.2}, {}↑ {}↓   Lifetime: {:.2}, {}↑ {}↓",
+                    "Server {}: {} {}↑,   {}[{}]↑ {}[{}]↓,   \
+                     Session: {}↑ {}↓ → {:.2},   Lifetime: {}↑ {}↓ → {:.2}",
                     self.server_version,
-                    fmt::date_diff_now(self.server.started),
                     self.server.free_space.fmt_size(),
+                    fmt::date_diff_now(self.server.started),
                     self.server.rate_up.fmt_size(),
                     self.server
                         .throttle_up
@@ -613,21 +621,21 @@ impl Renderable for Main {
                         .throttle_down
                         .map(|t| if t == -1 { "∞".into() } else { t.fmt_size() })
                         .unwrap_or_else(|| "∞".into()),
+                    self.server.ses_transferred_up.fmt_size(),
+                    self.server.ses_transferred_down.fmt_size(),
                     if self.server.ses_transferred_down == 0 {
                         1.
                     } else {
                         self.server.ses_transferred_up as f32
                             / self.server.ses_transferred_down as f32
                     },
-                    self.server.ses_transferred_up.fmt_size(),
-                    self.server.ses_transferred_down.fmt_size(),
+                    self.server.transferred_up.fmt_size(),
+                    self.server.transferred_down.fmt_size(),
                     if self.server.transferred_down == 0 {
                         1.
                     } else {
                         self.server.transferred_up as f32 / self.server.transferred_down as f32
                     },
-                    self.server.transferred_up.fmt_size(),
-                    self.server.transferred_down.fmt_size(),
                 ),
             )
             .render(target, width, height, x, y);
