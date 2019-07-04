@@ -20,11 +20,7 @@ use synapse_rpc::{
 };
 use termion::event::Key;
 
-use std::{
-    borrow::Cow,
-    cmp::{self, Ordering},
-    collections::HashMap,
-};
+use std::cmp::{self, Ordering};
 
 use crate::{
     rpc,
@@ -801,15 +797,8 @@ impl HandleRpc for Main {
                 true
             }
             SMessage::UpdateResources { resources, .. } => {
-                let mut name_cache = match resources.first() {
-                    Some(&SResourceUpdate::Resource(Cow::Owned(Resource::Torrent(_))))
-                    | Some(&SResourceUpdate::Resource(Cow::Borrowed(&Resource::Torrent(_)))) => {
-                        Some(HashMap::with_capacity(resources.len()))
-                    }
-                    _ => None,
-                };
                 let mut recomp_bounds = false;
-                'UPDATES: for upd in resources {
+                'UPDATES: for upd in resources.into_iter() {
                     match upd {
                         // New resource insertion
                         SResourceUpdate::Resource(res) => match res.into_owned() {
@@ -817,32 +806,17 @@ impl HandleRpc for Main {
                                 self.server = s;
                             }
                             Resource::Torrent(t) => {
-                                let name = t
-                                    .name
-                                    .as_ref()
-                                    .map(|n| n.to_lowercase())
-                                    .unwrap_or_else(|| "".to_owned());
+                                let empty = String::new();
                                 let idx = self
                                     .torrents
                                     .2
                                     .binary_search_by(|probe| {
-                                        natord::compare(
-                                            name_cache
-                                                .as_mut()
-                                                .unwrap()
-                                                .entry(probe.id.clone())
-                                                .or_insert_with(|| {
-                                                    probe
-                                                        .name
-                                                        .as_ref()
-                                                        .map(|n| n.to_lowercase())
-                                                        .unwrap_or_else(|| "".to_owned())
-                                                }),
-                                            &name,
+                                        natord::compare_ignore_case(
+                                            probe.name.as_ref().unwrap_or_else(|| &empty),
+                                            t.name.as_ref().unwrap_or_else(|| &empty),
                                         )
                                     })
                                     .unwrap_or_else(|e| e);
-                                name_cache.as_mut().unwrap().insert(t.id.clone(), name);
 
                                 if idx >= self.torrents.0
                                     && idx - self.torrents.0 <= self.last_height as usize
