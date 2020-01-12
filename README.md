@@ -8,7 +8,7 @@ Note: Currently termion (the underlying TUI library) does not respect terminfo a
 Rust minimum version of 1.31, pkg-config, a cc, openssl/security-framework/schannel.
 
 ## Configuration
-The config file is searched for at `$XDG_CONFIG_HOME/axon/conf.toml` and `~/.config/axon/conf.toml`.
+The config file is searched for at `$XDG_CONFIG_HOME/axon.toml` and `~/.config/axon.toml`.
 For options, see `example_conf.toml`.
 
 ## Keybindings
